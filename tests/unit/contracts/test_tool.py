@@ -1,4 +1,5 @@
 from abc import ABC
+from typing import Any
 
 import pytest
 from packages.domain.models.enums import RiskLevel
@@ -15,10 +16,10 @@ class DummyTool(Tool):
     def get_description(self) -> str:
         return "A dummy tool for testing"
 
-    def get_input_schema(self) -> dict[str, object]:
+    def get_input_schema(self) -> dict[str, Any]:
         return {"type": "object"}
 
-    def get_output_schema(self) -> dict[str, object]:
+    def get_output_schema(self) -> dict[str, Any]:
         return {"type": "object"}
 
     def get_risk_level(self) -> RiskLevel:
@@ -29,6 +30,9 @@ class DummyTool(Tool):
 
     def get_required_permissions(self) -> list[str]:
         return []
+
+    async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        return {}
 
 
 class TestToolContract:
@@ -129,6 +133,9 @@ class TestToolReadOnlyContract:
             def get_required_permissions(self):
                 return []
 
+            async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]:
+                return {}
+
         tool = ConfigurableTool()
         assert tool.is_read_only() == readonly
 
@@ -162,6 +169,9 @@ class TestToolRiskLevelContract:
                 def get_required_permissions(self):
                     return []
 
+                async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]:
+                    return {}
+
             tool = TestTool()
             assert tool.get_risk_level() == level
 
@@ -192,6 +202,9 @@ class TestToolIdentifiers:
 
             def get_required_permissions(self):
                 return []
+
+            async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]:
+                return {}
 
         tool = MyTool()
         assert tool.get_identifier() == "my.unique.tool.id"

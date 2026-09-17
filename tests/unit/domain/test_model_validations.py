@@ -443,21 +443,18 @@ class TestPolicyDefinitions:
         assert policy.allowed_resource_ids == []
 
     def test_policy_with_allowed_tools(self):
-        tool_id = uuid4()
-        policy = Policy(organization_id=uuid4(), name="restricted", allowed_tool_ids=[tool_id])
-        assert tool_id in policy.allowed_tool_ids
+        policy = Policy(organization_id=uuid4(), name="restricted", allowed_tool_ids=["tool-1"])
+        assert "tool-1" in policy.allowed_tool_ids
 
     def test_policy_with_denied_tools(self):
-        tool_id = uuid4()
-        policy = Policy(organization_id=uuid4(), name="restricted", denied_tool_ids=[tool_id])
-        assert tool_id in policy.denied_tool_ids
+        policy = Policy(organization_id=uuid4(), name="restricted", denied_tool_ids=["tool-1"])
+        assert "tool-1" in policy.denied_tool_ids
 
     def test_policy_with_approval_required(self):
-        tool_id = uuid4()
         policy = Policy(
-            organization_id=uuid4(), name="restricted", approval_required_tool_ids=[tool_id]
+            organization_id=uuid4(), name="restricted", approval_required_tool_ids=["tool-1"]
         )
-        assert tool_id in policy.approval_required_tool_ids
+        assert "tool-1" in policy.approval_required_tool_ids
 
     def test_policy_max_risk_level(self):
         policy = Policy(organization_id=uuid4(), name="restricted", max_risk_level=RiskLevel.LOW)

@@ -10,8 +10,8 @@ class Policy(NexusBaseModel):
     organization_id: UUID
     name: str
     description: str | None = None
-    allowed_tool_ids: list[UUID] = Field(default_factory=list)
-    denied_tool_ids: list[UUID] = Field(default_factory=list)
-    approval_required_tool_ids: list[UUID] = Field(default_factory=list)
+    allowed_tool_ids: list[str] = Field(default_factory=list)
+    denied_tool_ids: list[str] = Field(default_factory=list)
+    approval_required_tool_ids: list[str] = Field(default_factory=list)
     max_risk_level: RiskLevel = RiskLevel.MEDIUM
     allowed_resource_ids: list[UUID] = Field(default_factory=list)

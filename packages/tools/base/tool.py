@@ -28,3 +28,6 @@ class Tool(ABC):
 
     @abstractmethod
     def get_required_permissions(self) -> list[str]: ...
+
+    @abstractmethod
+    async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]: ...
