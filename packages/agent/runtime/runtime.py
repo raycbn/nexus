@@ -153,7 +153,13 @@ class AgentRuntime:
                                 observation = f"Tool execution failed: {e}"
 
                     state.observations.append(observation)
-                    state.messages.append(LLMMessage(role="tool", content=observation))
+                    state.messages.append(
+                        LLMMessage(
+                            role="tool",
+                            tool_name=tool_call.tool_name,
+                            content=observation,
+                        )
+                    )
             else:
                 state.final_result = response.content
                 state.status = AgentStatus.COMPLETED

@@ -14,6 +14,7 @@ class LLMMessage(BaseModel):
     role: str
     content: str | None = None
     tool_calls: list[ToolCall] | None = None
+    tool_name: str | None = None
 
 
 class LLMRequest(BaseModel):
