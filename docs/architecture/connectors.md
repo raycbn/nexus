@@ -16,22 +16,33 @@ Connectors are the abstraction layer that allows NEXUS to interact with external
 
 ## Interface Definition
 
-The base connector interface (`packages/connectors/base`) defines:
+The base connector interface (`packages/connectors/base/connector.py`) defines:
 
 ```python
 class Connector(ABC):
-    """Base interface for all connectors."""
+    @abstractmethod
+    async def connect(self, resource: Resource) -> None: ...
 
     @abstractmethod
-    async def health_check(self) -> HealthStatus: ...
+    async def disconnect(self, resource: Resource) -> None: ...
 
     @abstractmethod
-    async def list_resources(
-        self,
-        organization_id: OrganizationID,
-        filters: ResourceFilters | None = None,
-    ) -> AsyncIterator[Resource]: ...
+    async def health_check(self, resource: Resource) -> HealthStatus: ...
+
+    @abstractmethod
+    async def discover(self, resource: Resource) -> AsyncIterator[Resource]: ...
+
+    @abstractmethod
+    async def execute_read(self, resource: Resource, command: str) -> ReadResult: ...
 ```
+
+Result models are defined in `packages/connectors/base/models.py`:
+
+- `HealthStatus` — healthy boolean with message and details
+- `ReadResult` — operation result with data, error, and metadata
+- `DiscoverResult` — list of discovered resources
+
+The connector receives a Resource and uses external configuration/secret resolution rather than embedding credentials. Connection details are abstracted from the domain model.
 
 ## Connector Types
 

@@ -56,20 +56,22 @@ The policy package (`packages/policies`) provides:
 
 ## Audit Trail
 
-Every significant action produces an `AuditEvent` in `packages/domain/events`:
+Every significant action produces an `AuditEvent` defined in `packages/domain/models/audit_event.py`:
 
 ```python
 class AuditEvent(BaseModel):
     event_id: EventID
     organization_id: OrganizationID
-    agent_id: AgentID
+    workspace_id: UUID | None
+    actor_type: ActorType  # user, agent, system, connector
+    actor_id: UUID
+    event_type: EventType
+    resource_id: UUID | None
+    tool_id: UUID | None
     action: str
-    tool_name: str
-    parameters: dict[str, Any]
-    result: str
+    result_status: ResultStatus  # success, failure, pending, denied, skipped
     timestamp: datetime
-    approved_by: UserID | None
-    policy_decision: PolicyDecision
+    metadata: dict[str, Any]
 ```
 
 ## Secret Management

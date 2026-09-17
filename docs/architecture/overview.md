@@ -8,7 +8,7 @@ NEXUS follows a layered, package-based architecture with strict separation of co
 ┌──────────────────────────────────────────────────┐
 │                    apps/                          │
 │  ┌─────────────┐   ┌──────────┐                  │
-│  │   api/      │   │  web/    │  (placeholder)   │
+│  │   api/      │   │  web/    │  (placeholder)  │
 │  │  (FastAPI)  │   │          │                  │
 │  └──────┬──────┘   └──────────┘                  │
 │         │ consumes                              │
@@ -16,22 +16,37 @@ NEXUS follows a layered, package-based architecture with strict separation of co
 │         │                                       │
 │  ┌──────▼───────────────────────────────────┐    │
 │  │              packages/                    │    │
-│  │  ┌────────┐ ┌─────┐ ┌────────────┐      │    │
-│  │  │ domain │ │ agent│ │ connectors │      │    │
-│  │  │ models │ │ runtime│ │ & tools  │      │    │
-│  │  └────────┘ └─────┘ └────────────┘      │    │
+│  │  ┌────────┐ ┌─────┐ ┌────────────┐     │    │
+│  │  │ domain │ │ agent│ │ connectors │     │    │
+│  │  │ models │ │ runtime│ │ & tools  │     │    │
+│  │  └────────┘ └─────┘ └────────────┘     │    │
 │  │  ┌────────┐ ┌──────┐ ┌──────────┐      │    │
 │  │  │common  │ │  mcp │ │ policies │      │    │
 │  │  │config  │ │      │ │          │      │    │
 │  │  └────────┘ └──────┘ └──────────┘      │    │
 │  └─────────────────────────────────────────┘    │
 ├──────────────────────────────────────────────────┤
-│           infrastructure/                        │
+│           infrastructure/                         │
 │    docker/    local/    (deployment configs)     │
 ├──────────────────────────────────────────────────┤
-│              tests/                              │
-│  unit/  integration/  evaluation/                │
+│              tests/                               │
+│  unit/  integration/  evaluation/               │
 └──────────────────────────────────────────────────┘
+```
+
+## Domain Model Hierarchy
+
+```
+Organization
+├── Workspace(s)
+│   ├── Resource(s)
+│   ├── Agent(s)
+│   ├── Incident(s)
+│   ├── Connector(s)
+│   ├── Policy(ies)
+│   ├── Tool(s)
+│   └── KnowledgeSource(s)
+└── User(s)
 ```
 
 ## Key Architectural Principles
@@ -40,87 +55,48 @@ NEXUS follows a layered, package-based architecture with strict separation of co
 
 2. **Configuration-Driven** — All behavior is configurable through the settings system (`packages/common/config`). No operational parameters are hardcoded.
 
-3. **Multi-Tenant by Design** — Every domain model carries an `organization_id`. Tenant isolation is enforced at the domain layer, not the infrastructure layer.
+3. **Multi-Tenant by Design** — Every domain model carries an `organization_id`. Tenant isolation is enforced at the domain layer, not the infrastructure layer. See [Multi-Tenancy](multi-tenancy.md) for details.
 
-4. **Provider/Connector Abstraction** — All infrastructure interactions go through the connector interface. New providers are added by implementing the base interface, not by modifying core code.
+4. **Provider/Connector Abstraction** — All infrastructure interactions go through the connector interface defined in [Connectors](connectors.md). New providers are added by implementing the base interface.
 
-5. **Read-Only First** — All agent tools are read-only by default. Any tool capable of mutation must pass through the policy/approval layer.
+5. **Read-Only First** — All agent tools are read-only by default. Any tool capable of mutation must pass through the policy/approval layer. See [Agent Security](agent-security.md) for details.
 
-6. **Auditability** — Every significant agent action is recorded as an audit event in `packages/domain/events`.
+6. **Auditability** — Every significant agent action is recorded as an audit event in `packages/domain/models/audit_event.py`.
+
+## Domain Model
+
+For the complete domain model specification, see [Domain Model](domain-model.md).
+
+## Agent-Tool-Connector Contract
+
+For the agent execution contract, see [Agent Contract](agent-contract.md).
 
 ## Package Responsibilities
 
 ### `packages/domain`
-Core domain models (Organization, User, Workspace, Resource, Incident), domain events (AuditEvent, IncidentCreated), and domain exceptions. Pure Python — no framework dependencies.
+Core domain models (Organization, User, Workspace, Resource, Incident), domain events (AuditEvent), domain exceptions, and enums. Pure Python — no framework dependencies.
 
 ### `packages/agent`
-Agent runtime orchestration and memory management. The runtime is responsible for:
-- Receiving incident/task inputs
-- Selecting and invoking appropriate tools
-- Managing conversation/memory context
-- Producing structured findings
+Agent runtime orchestration and memory management.
 
 ### `packages/connectors`
 Abstraction layer for connecting to external infrastructure.
-- `base/` — Interface definition (`Connector` protocol/ABC) and common types
-- `providers/` — Concrete connector implementations (e.g., Prometheus, Datadog, database)
+- `base/` — Connector interface and result models
+- `providers/` — Concrete connector implementations (not yet implemented)
 
 ### `packages/tools`
 Abstraction layer for tools agents can invoke.
-- `base/` — Tool interface definition
-- `providers/` — Concrete tool implementations (read-only inspection tools)
+- `base/` — Tool interface
+- `providers/` — Concrete tool implementations (not yet implemented)
 
 ### `packages/policies`
-Policy engine that evaluates whether actions are permitted. Enforces:
-- Read-only defaults
-- Dangerous action approval requirements
-- Tenant-specific policy overrides
+Policy engine that evaluates whether actions are permitted.
 
 ### `packages/mcp`
-Model Context Protocol server integration. Bridges the agent runtime with MCP-compatible tooling.
+Model Context Protocol server integration.
 
 ### `packages/common`
-Shared infrastructure utilities:
-- `config/` — Settings management (Pydantic Settings)
-- `logging/` — Structured logging (structlog)
-- `utils/` — Common helpers
+Shared infrastructure utilities: config, logging, utils.
 
 ### `apps/api`
-FastAPI application exposing REST endpoints for:
-- Organization/user/workspace management
-- Agent CRUD and invocation
-- Connector/tool registration
-- Incident management
-- Audit log queries
-
-## Data Flow
-
-```
-Incident Detected
-       │
-       ▼
-┌──────────────┐
-│  API Layer   │  (receives incident, dispatches to agent)
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│  Agent       │  (determines investigation plan, selects tools)
-│  Runtime     │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐      ┌───────────────┐
-│  Tools       │◄────►│  Connectors   │  (reads from infrastructure)
-└──────────────┘      └───────────────┘
-       │
-       ▼
-┌──────────────┐
-│  Policy      │  (validates any write operations)
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│  Audit Log   │  (records all significant actions)
-└──────────────┘
-```
+FastAPI application exposing REST endpoints.

@@ -24,7 +24,6 @@ dev = [
     "pytest-cov>=5.0.0",
     "ruff>=0.6.0",
     "mypy>=1.10.0",
-    "ruff-lsp>=0.4.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -37,6 +36,7 @@ asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
     "error::DeprecationWarning",
 ]
+pythonpath = ["."]
 
 [tool.ruff]
 target-version = "py312"
@@ -57,6 +57,7 @@ select = [
 ]
 ignore = [
     "B008",
+    "N818",
 ]
 
 [tool.mypy]
