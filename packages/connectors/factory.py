@@ -28,6 +28,7 @@ def register_linux_tools(
     connector: LinuxConnector,
     registry: Any,
 ) -> list[Any]:
+    from packages.tools.providers.application_tools import GetApplicationHealthTool
     from packages.tools.providers.linux_tools import (
         GetCpuUsageTool,
         GetDiskUsageTool,
@@ -46,6 +47,7 @@ def register_linux_tools(
         GetProcessesTool(connector),
         GetNetworkListenersTool(connector),
         GetServiceStatusTool(connector),
+        GetApplicationHealthTool(connector),
     ]
     for tool in tools:
         registry.register(tool)

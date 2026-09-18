@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from pydantic import Field
@@ -23,6 +24,7 @@ class AgentState(NexusBaseModel):
     messages: list[LLMMessage] = Field(default_factory=list)
     tool_calls: list[ToolCall] = Field(default_factory=list)
     observations: list[str] = Field(default_factory=list)
+    tool_results: list[dict[str, Any]] = Field(default_factory=list)
     iteration_count: int = 0
     final_result: str | None = None
     status: AgentStatus = AgentStatus.PENDING

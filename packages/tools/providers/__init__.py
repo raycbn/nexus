@@ -1,3 +1,4 @@
+from packages.tools.providers.application_tools import GetApplicationHealthTool
 from packages.tools.providers.linux_tools import (
     GetCpuUsageTool,
     GetDiskUsageTool,
@@ -24,6 +25,7 @@ from packages.tools.providers.mock_tools import (
 )
 
 __all__ = [
+    "GetApplicationHealthTool",
     "GetCpuUsageTool",
     "GetDiskUsageTool",
     "GetMemoryUsageTool",

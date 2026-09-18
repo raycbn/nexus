@@ -12,6 +12,11 @@ from packages.agent.runtime.events import (
     ToolExecutedEvent,
     ToolRequestedEvent,
 )
+from packages.agent.runtime.execution import (
+    ToolExecutionResult,
+    sanitize_failure,
+    sanitize_observation_failure,
+)
 from packages.agent.runtime.observability import InMemoryEventSink
 from packages.agent.runtime.state import AgentState, AgentStatus
 from packages.domain.models.agent import Agent
@@ -137,8 +142,9 @@ class AgentRuntime:
                             )
                             try:
                                 tool_start = time.perf_counter()
-                                await tool.execute(tool_call.arguments)
+                                exec_result = await tool.execute(tool_call.arguments)
                                 tool_duration = time.perf_counter() - tool_start
+                                tool_result = ToolExecutionResult.from_result(exec_result)
                                 self._events.emit(
                                     ToolExecutedEvent(
                                         agent_id=agent.id,
@@ -147,17 +153,30 @@ class AgentRuntime:
                                         duration=tool_duration,
                                         resource_mode=tool.get_resource_mode(),
                                         resource_id=tool.get_resource_id(),
+                                        result=tool_result,
                                     )
                                 )
-                                observation = f"Tool {tool_call.tool_name} executed successfully"
+                                observation = sanitize_observation_failure(
+                                    RuntimeError("tool execution failed")
+                                )
+                                if exec_result is not None:
+                                    observation = "Tool executed successfully"
                                 self._events.emit(
                                     ObservationRecordedEvent(
                                         agent_id=agent.id,
                                         observation=observation,
                                     )
                                 )
+                                if tool_result is not None:
+                                    state.tool_results.append(
+                                        {
+                                            "tool_name": tool_call.tool_name,
+                                            "structured_content": tool_result.structured_content,
+                                        }
+                                    )
                             except Exception as e:
                                 tool_duration = time.perf_counter() - tool_start
+                                failure = sanitize_failure(e)
                                 self._events.emit(
                                     ToolExecutedEvent(
                                         agent_id=agent.id,
@@ -166,9 +185,10 @@ class AgentRuntime:
                                         duration=tool_duration,
                                         resource_mode=tool.get_resource_mode(),
                                         resource_id=tool.get_resource_id(),
+                                        failure=failure,
                                     )
                                 )
-                                observation = f"Tool execution failed: {e}"
+                                observation = sanitize_observation_failure(e)
 
                     state.observations.append(observation)
                     state.messages.append(

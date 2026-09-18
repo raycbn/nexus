@@ -19,6 +19,10 @@ class NexusSettings(BaseSettings):
     # stored in source, only the path is referenced by configuration).
     lab_ssh_key_path: str = "infrastructure/lab/ssh_key"
 
+    # --- Linux Lab Application (exposed inside the lab container) ---
+    lab_app_base_url: str = "http://localhost"
+    lab_app_slow_seconds: int = 2
+
     @property
     def ollama_base_url(self) -> str:
         return f"http://{self.ollama_host}:{self.ollama_port}"
