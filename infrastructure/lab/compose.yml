@@ -1,0 +1,101 @@
+services:
+  linux-lab-01:
+    build:
+      context: .
+      dockerfile: linux-lab/Dockerfile
+    container_name: linux-lab-01
+    hostname: linux-lab-01
+    ports:
+      - "2222:22"
+      - "8080:80"
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=labuser
+      - POSTGRES_PASSWORD=labpassword
+      - POSTGRES_DB=labdb
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - API_HOST=0.0.0.0
+      - API_PORT=5000
+    volumes:
+      - type: bind
+        source: ./linux-lab/ssh/authorized_keys
+        target: /run/nexus/authorized_keys
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - lab-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: lab-postgres
+    environment:
+      POSTGRES_USER: labuser
+      POSTGRES_PASSWORD: labpassword
+      POSTGRES_DB: labdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U labuser -d labdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - lab-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: lab-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - lab-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  lab-network:
+    driver: bridge

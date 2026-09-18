@@ -1,0 +1,41 @@
+# SSH server configuration for NEXUS Linux Lab
+# This file is mounted into the container at /etc/ssh/sshd_config
+
+Port 22
+ListenAddress 0.0.0.0
+Protocol 2
+
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+# Logging
+SyslogFacility AUTH
+LogLevel INFO
+
+# Authentication
+LoginGraceTime 120
+PermitRootLogin no
+StrictModes yes
+MaxAuthTries 6
+MaxSessions 10
+
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+UsePAM yes
+
+# Allow nexus user
+AllowUsers nexus
+
+# Keep alive
+TCPKeepAlive yes
+ClientAliveInterval 300
+ClientAliveCountMax 2
+
+# Disable unnecessary features
+X11Forwarding no
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/lib/openssh/sftp-server

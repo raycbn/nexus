@@ -1,0 +1,9 @@
+This is an EXAMPLE file showing the format. It is NOT a valid key.
+
+To create your real authorized_keys for the lab:
+  cp infrastructure/lab/ssh_key.pub infrastructure/lab/linux-lab/ssh/authorized_keys
+
+This file is a template only. Replace the line below with your actual
+ssh-ed25519 public key (e.g., the contents of ssh_key.pub).
+
+EXAMPLE_KEY_DATA_DO_NOT_USE

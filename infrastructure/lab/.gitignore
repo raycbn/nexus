@@ -1,0 +1,10 @@
+# Private SSH keys and credentials - NEVER COMMIT
+ssh_key
+ssh_key.pub
+linux-lab/ssh/authorized_keys
+id_*
+id_*.pub
+*.pem
+*.key
+secrets/
+.env.local
