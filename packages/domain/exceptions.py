@@ -9,6 +9,42 @@ class ConnectorError(Exception):
         super().__init__(f"Connector error: {message}")
 
 
+class ConnectorConnectionError(ConnectorError):
+    def __init__(self, message: str) -> None:
+        super().__init__(f"Connection error: {message}")
+
+
+class ConnectorAuthenticationError(ConnectorError):
+    def __init__(self, message: str) -> None:
+        super().__init__(f"Authentication error: {message}")
+
+
+class ConnectorTimeoutError(ConnectorError):
+    def __init__(self, message: str) -> None:
+        super().__init__(f"Timeout error: {message}")
+
+
+class ConnectorCommandError(ConnectorError):
+    def __init__(self, message: str, command: str = "") -> None:
+        self.command = command
+        super().__init__(f"Command error: {message}")
+
+
+class ConnectorUnsupportedOperationError(ConnectorError):
+    def __init__(self, message: str) -> None:
+        super().__init__(f"Unsupported operation: {message}")
+
+
+class ConnectorInvalidResourceError(ConnectorError):
+    def __init__(self, message: str) -> None:
+        super().__init__(f"Invalid resource: {message}")
+
+
+class ConnectorUnavailableError(ConnectorError):
+    def __init__(self, message: str) -> None:
+        super().__init__(f"Connector unavailable: {message}")
+
+
 class ToolNotAllowed(Exception):
     def __init__(self, tool_id: str) -> None:
         self.tool_id = tool_id
