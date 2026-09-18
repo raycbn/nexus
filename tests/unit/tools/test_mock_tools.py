@@ -78,6 +78,18 @@ def test_all_tools_have_low_risk():
         assert tool.get_risk_level() == RiskLevel.LOW
 
 
+def test_all_mock_tools_are_simulation():
+    tools: list[Tool] = [
+        GetSystemInfoTool(),
+        GetCpuUsageTool(),
+        GetMemoryUsageTool(),
+        GetDiskUsageTool(),
+        GetRunningProcessesTool(),
+    ]
+    for tool in tools:
+        assert tool.get_resource_mode() == "simulation"
+
+
 def test_tools_have_schemas():
     tool = GetSystemInfoTool()
     assert isinstance(tool.get_input_schema(), dict)

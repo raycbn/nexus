@@ -1,3 +1,5 @@
+import time
+
 from packages.agent.llm.contract import LLMMessage, LLMProvider, LLMRequest
 from packages.agent.runtime.events import (
     AgentCompletedEvent,
@@ -37,6 +39,7 @@ class AgentRuntime:
         agent: Agent,
         allowed_tool_identifiers: list[str],
     ) -> AgentState:
+        runtime_start = time.perf_counter()
         state = AgentState(
             objective=objective,
             agent_id=agent.id,
@@ -61,13 +64,17 @@ class AgentRuntime:
         state.messages.append(LLMMessage(role="user", content=objective))
 
         while state.iteration_count < self._max_iterations:
+            if state.iteration_count > 0:
+                print("[LLM] Sending follow-up...")
             request = LLMRequest(
                 messages=state.messages,
                 tools=[t.get_identifier() for t in available_tools],
             )
 
             try:
+                llm_start = time.perf_counter()
                 response = await self._llm.generate(request)
+                llm_duration = time.perf_counter() - llm_start
             except Exception as e:
                 self._events.emit(
                     AgentFailedEvent(
@@ -84,6 +91,8 @@ class AgentRuntime:
                     iteration=state.iteration_count,
                     has_tool_calls=response.wants_tool_execution,
                     content_preview=response.content[:200] if response.content else "",
+                    tool_call_count=len(response.tool_calls),
+                    duration=llm_duration,
                 )
             )
 
@@ -127,12 +136,15 @@ class AgentRuntime:
                                 )
                             )
                             try:
+                                tool_start = time.perf_counter()
                                 await tool.execute(tool_call.arguments)
+                                tool_duration = time.perf_counter() - tool_start
                                 self._events.emit(
                                     ToolExecutedEvent(
                                         agent_id=agent.id,
                                         tool_name=tool_call.tool_name,
                                         success=True,
+                                        duration=tool_duration,
                                     )
                                 )
                                 observation = f"Tool {tool_call.tool_name} executed successfully"
@@ -143,11 +155,13 @@ class AgentRuntime:
                                     )
                                 )
                             except Exception as e:
+                                tool_duration = time.perf_counter() - tool_start
                                 self._events.emit(
                                     ToolExecutedEvent(
                                         agent_id=agent.id,
                                         tool_name=tool_call.tool_name,
                                         success=False,
+                                        duration=tool_duration,
                                     )
                                 )
                                 observation = f"Tool execution failed: {e}"
@@ -183,6 +197,7 @@ class AgentRuntime:
                 )
             )
 
+        state.total_duration = time.perf_counter() - runtime_start
         return state
 
     @property

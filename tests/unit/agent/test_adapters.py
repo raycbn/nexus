@@ -172,7 +172,6 @@ class TestOllamaMessageAdapterFromOllama:
         assert result.tool_calls[0].arguments == {"raw": "not-json"}
 
     def test_empty_tool_call_arguments(self):
-
         raw = {
             "message": {
                 "role": "assistant",
@@ -187,6 +186,164 @@ class TestOllamaMessageAdapterFromOllama:
         }
         result = OllamaMessageAdapter.from_ollama_response(raw)
         assert result.tool_calls[0].arguments == {}
+
+    def test_none_tool_calls(self):
+        raw = {
+            "message": {
+                "role": "assistant",
+                "content": "Hello",
+                "tool_calls": None,
+            }
+        }
+        result = OllamaMessageAdapter.from_ollama_response(raw)
+        assert result.content == "Hello"
+        assert result.tool_calls == []
+        assert result.is_final_answer is True
+        assert result.wants_tool_execution is False
+
+    def test_thinking_field_and_clean_content(self):
+        raw = {
+            "message": {
+                "role": "assistant",
+                "content": "The server is healthy.",
+                "thinking": "Let me analyze the request...",
+            }
+        }
+        result = OllamaMessageAdapter.from_ollama_response(raw)
+        assert result.content == "The server is healthy."
+        assert result.thinking == "Let me analyze the request..."
+        assert result.tool_calls == []
+        assert result.is_final_answer is True
+
+    def test_thinking_tags_stripped_from_content(self):
+        raw = {
+            "message": {
+                "role": "assistant",
+                "content": "<|thinking_start|>analyze<|thinking_end|>The server is healthy.",
+            }
+        }
+        result = OllamaMessageAdapter.from_ollama_response(raw)
+        assert "<|thinking" not in result.content
+        assert "analyze" not in result.content
+        assert "healthy" in result.content
+
+    def test_end_think_tag_stripped_and_keeps_response(self):
+        raw = {
+            "message": {
+                "role": "assistant",
+                "content": "Okay, let me think about this.\n</think>\n\nHello! How can I help?",
+            }
+        }
+        result = OllamaMessageAdapter.from_ollama_response(raw)
+        assert "</think>" not in result.content
+        assert "let me think" not in result.content
+        assert "Hello" in result.content
+        assert "How can I help" in result.content
+
+    def test_content_without_thinking(self):
+        raw = {"message": {"role": "assistant", "content": "Hello world"}}
+        result = OllamaMessageAdapter.from_ollama_response(raw)
+        assert result.content == "Hello world"
+        assert result.thinking == ""
+        assert result.tool_calls == []
+
+    def test_tool_call_response_with_thinking(self):
+        import json
+
+        raw = {
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "thinking": "I need to look up system information.",
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "function": {
+                            "name": "get_system_info",
+                            "arguments": json.dumps({"target": "server1"}),
+                        },
+                    }
+                ],
+            }
+        }
+        result = OllamaMessageAdapter.from_ollama_response(raw)
+        assert result.content == ""
+        assert len(result.tool_calls) == 1
+        assert result.tool_calls[0].tool_name == "get_system_info"
+        assert result.thinking == "I need to look up system information."
+        assert result.wants_tool_execution is True
+
+    def test_final_answer_after_tool_calls(self):
+        raw = {
+            "message": {
+                "role": "assistant",
+                "content": "The server is healthy.",
+                "thinking": "I have the results.",
+            }
+        }
+        result = OllamaMessageAdapter.from_ollama_response(raw)
+        assert result.content == "The server is healthy."
+        assert result.is_final_answer is True
+        assert result.wants_tool_execution is False
+        assert result.thinking == "I have the results."
+
+    def test_empty_tool_calls(self):
+        raw = {
+            "message": {
+                "role": "assistant",
+                "content": "Hello",
+                "tool_calls": [],
+            }
+        }
+        result = OllamaMessageAdapter.from_ollama_response(raw)
+        assert result.content == "Hello"
+        assert result.tool_calls == []
+
+    def test_text_only_response_is_final_answer(self):
+        raw = {"message": {"role": "assistant", "content": "Hello world"}}
+        result = OllamaMessageAdapter.from_ollama_response(raw)
+        assert result.content == "Hello world"
+        assert result.tool_calls == []
+        assert result.is_final_answer is True
+
+    def test_full_conversation_tool_call_then_final_answer(self):
+        messages = [
+            LLMMessage(role="user", content="Check the server"),
+            LLMMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    ToolCall(
+                        id="call-1",
+                        tool_name="get_system_info",
+                        arguments={"target": "server1"},
+                    )
+                ],
+            ),
+            LLMMessage(
+                role="tool",
+                tool_name="get_system_info",
+                content="Tool result for get_system_info (call call-1): OK",
+            ),
+            LLMMessage(role="assistant", content="The server is healthy."),
+        ]
+        result = OllamaMessageAdapter.to_ollama_messages(messages)
+        assert result[0]["role"] == "user"
+        assert result[1]["role"] == "assistant"
+        assert result[1]["tool_calls"][0]["id"] == "call-1"
+        assert result[2]["role"] == "tool"
+        assert result[2]["tool_name"] == "get_system_info"
+        assert result[3]["role"] == "assistant"
+        assert result[3]["content"] == "The server is healthy."
+
+    def test_full_conversation_no_tool_calls(self):
+        messages = [
+            LLMMessage(role="user", content="What is the time?"),
+            LLMMessage(role="assistant", content="It is 12:00."),
+        ]
+        result = OllamaMessageAdapter.to_ollama_messages(messages)
+        assert result[0] == {"role": "user", "content": "What is the time?"}
+        assert result[1] == {"role": "assistant", "content": "It is 12:00."}
 
 
 class TestOllamaMessageAdapterToolProtocol:

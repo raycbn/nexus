@@ -31,6 +31,9 @@ class DummyTool(Tool):
     def get_required_permissions(self) -> list[str]:
         return []
 
+    def get_resource_mode(self) -> str:
+        return "real"
+
     async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]:
         return {}
 
@@ -133,6 +136,9 @@ class TestToolReadOnlyContract:
             def get_required_permissions(self):
                 return []
 
+            def get_resource_mode(self):
+                return "real"
+
             async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]:
                 return {}
 
@@ -169,6 +175,9 @@ class TestToolRiskLevelContract:
                 def get_required_permissions(self):
                     return []
 
+                def get_resource_mode(self):
+                    return "real"
+
                 async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]:
                     return {}
 
@@ -202,6 +211,9 @@ class TestToolIdentifiers:
 
             def get_required_permissions(self):
                 return []
+
+            def get_resource_mode(self):
+                return "real"
 
             async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]:
                 return {}

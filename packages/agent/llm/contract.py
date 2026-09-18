@@ -25,6 +25,7 @@ class LLMRequest(BaseModel):
 class LLMResponse(BaseModel):
     content: str = ""
     tool_calls: list[ToolCall] = Field(default_factory=list)
+    thinking: str = ""
 
     @property
     def is_final_answer(self) -> bool:

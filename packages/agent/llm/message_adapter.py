@@ -46,14 +46,30 @@ class OllamaMessageAdapter:
         return entry
 
     @staticmethod
+    def _sanitize_content(content: str) -> str:
+        import re
+
+        thinking_pattern = re.compile(r"<\|thinking_start\|>.*?<\|thinking_end\|>", re.DOTALL)
+        cleaned = thinking_pattern.sub("", content)
+
+        if "</think>" in cleaned:
+            last_marker = cleaned.rfind("</think>")
+            cleaned = cleaned[last_marker + len("</think>") :]
+
+        return cleaned.strip()
+
+    @staticmethod
     def from_ollama_response(
         ollama_response: dict[str, Any], tool_map: dict[str, Tool] | None = None
     ) -> LLMResponse:
         message = ollama_response.get("message", {})
-        content = message.get("content", "")
+        raw_content = message.get("content", "")
+        thinking = message.get("thinking") or ""
+
+        content = OllamaMessageAdapter._sanitize_content(raw_content)
 
         tool_calls: list[ToolCall] = []
-        raw_calls = message.get("tool_calls", [])
+        raw_calls = message.get("tool_calls") or []
         for raw_call in raw_calls:
             function = raw_call.get("function", {})
             arguments_raw = function.get("arguments", "{}")
@@ -71,7 +87,7 @@ class OllamaMessageAdapter:
                 )
             )
 
-        return LLMResponse(content=content, tool_calls=tool_calls)
+        return LLMResponse(content=content, tool_calls=tool_calls, thinking=thinking)
 
     @staticmethod
     def tool_result_to_message(tool_call_id: str, tool_name: str, result: str) -> LLMMessage:

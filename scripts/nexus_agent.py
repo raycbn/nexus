@@ -64,7 +64,7 @@ def main() -> int:
 
     from packages.agent.llm.ollama import OllamaProvider
 
-    llm = OllamaProvider()
+    llm = OllamaProvider(registry=registry)
 
     runtime = AgentRuntime(
         llm=llm,
@@ -73,7 +73,7 @@ def main() -> int:
         max_iterations=10,
     )
 
-    print("Starting agent runtime...")
+    print("[AGENT] Starting")
     print()
 
     try:
@@ -84,13 +84,12 @@ def main() -> int:
         print(f"Runtime failed: {e}", file=sys.stderr)
         return 1
 
+    print()
     print("=" * 60)
     print("AGENT RESULT")
     print("=" * 60)
     print(f"Status: {result.status}")
     print(f"Iterations: {result.iteration_count}")
-    if result.final_result:
-        print(f"Final Answer: {result.final_result}")
     print()
 
     if runtime.events:
@@ -98,6 +97,9 @@ def main() -> int:
             AgentCompletedEvent,
             AgentFailedEvent,
             AgentStartedEvent,
+            LLMResponseReceivedEvent,
+            ObservationRecordedEvent,
+            ToolAllowedEvent,
             ToolDeniedEvent,
             ToolExecutedEvent,
             ToolRequestedEvent,
@@ -105,20 +107,33 @@ def main() -> int:
 
         started = runtime.events.get_by_type(AgentStartedEvent)
         if started:
-            print("Agent started.")
+            print("[AGENT] Starting")
 
         for event in runtime.events.events:
-            if isinstance(event, ToolRequestedEvent):
-                print(f"  Tool requested: {event.tool_name}")
+            if isinstance(event, AgentStartedEvent):
+                print("[AGENT] Starting")
+            elif isinstance(event, LLMResponseReceivedEvent):
+                duration_s = f"{event.duration:.3f}s"
+                print(f"[LLM] Response received ({duration_s})")
+                if event.tool_call_count > 0:
+                    print(f"[LLM] Tool calls: {event.tool_call_count}")
+            elif isinstance(event, ToolRequestedEvent):
+                print(f"[TOOL] Requested: {event.tool_name}")
+            elif isinstance(event, ToolAllowedEvent):
+                print(f"[POLICY] Allowed: {event.tool_name}")
             elif isinstance(event, ToolDeniedEvent):
-                print(f"  Tool denied: {event.tool_name} - {event.reason}")
+                print(f"[POLICY] Denied: {event.tool_name} - {event.reason}")
             elif isinstance(event, ToolExecutedEvent):
-                status = "SUCCESS" if event.success else "FAILURE"
-                print(f"  Tool executed: {event.tool_name} [{status}]")
+                duration_s = f"{event.duration:.3f}s"
+                print(f"[TOOL] Completed: {event.tool_name} ({duration_s})")
+            elif isinstance(event, ObservationRecordedEvent):
+                pass
             elif isinstance(event, AgentCompletedEvent):
-                print(f"Agent completed in {event.iterations} iterations.")
+                print("[AGENT] Completed")
+                if event.final_result:
+                    print(f"[AGENT] Final answer: {event.final_result}")
             elif isinstance(event, AgentFailedEvent):
-                print(f"Agent failed: {event.reason}")
+                print(f"[AGENT] Failed: {event.reason}")
 
     if result.status.value in ("failed", "max_iterations"):
         return 1

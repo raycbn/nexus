@@ -26,3 +26,4 @@ class AgentState(NexusBaseModel):
     iteration_count: int = 0
     final_result: str | None = None
     status: AgentStatus = AgentStatus.PENDING
+    total_duration: float = 0.0

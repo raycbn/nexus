@@ -18,6 +18,8 @@ class LLMResponseReceivedEvent(BaseModel):
     iteration: int
     has_tool_calls: bool
     content_preview: str
+    tool_call_count: int = 0
+    duration: float = 0.0
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -45,6 +47,7 @@ class ToolExecutedEvent(BaseModel):
     agent_id: uuid.UUID
     tool_name: str
     success: bool
+    duration: float = 0.0
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

@@ -26,6 +26,9 @@ class GetSystemInfoTool(Tool):
             "properties": {"hostname": {"type": "string"}, "os": {"type": "string"}},
         }
 
+    def get_resource_mode(self) -> str:
+        return "simulation"
+
     def get_risk_level(self) -> RiskLevel:
         return RiskLevel.LOW
 
@@ -57,6 +60,9 @@ class GetCpuUsageTool(Tool):
 
     def get_output_schema(self) -> dict[str, Any]:
         return {"type": "object", "properties": {"cpu_percent": {"type": "number"}}}
+
+    def get_resource_mode(self) -> str:
+        return "simulation"
 
     def get_risk_level(self) -> RiskLevel:
         return RiskLevel.LOW
@@ -100,6 +106,9 @@ class GetMemoryUsageTool(Tool):
             },
         }
 
+    def get_resource_mode(self) -> str:
+        return "simulation"
+
     def get_risk_level(self) -> RiskLevel:
         return RiskLevel.LOW
 
@@ -135,6 +144,9 @@ class GetDiskUsageTool(Tool):
             "properties": {"disk_used_gb": {"type": "number"}, "disk_percent": {"type": "number"}},
         }
 
+    def get_resource_mode(self) -> str:
+        return "simulation"
+
     def get_risk_level(self) -> RiskLevel:
         return RiskLevel.LOW
 
@@ -169,6 +181,9 @@ class GetRunningProcessesTool(Tool):
 
     def get_output_schema(self) -> dict[str, Any]:
         return {"type": "array", "items": {"type": "object"}}
+
+    def get_resource_mode(self) -> str:
+        return "simulation"
 
     def get_risk_level(self) -> RiskLevel:
         return RiskLevel.LOW
