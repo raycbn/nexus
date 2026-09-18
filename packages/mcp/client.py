@@ -39,7 +39,12 @@ class MCPToolWrapper(Tool):
         return ["read"]
 
     def get_resource_mode(self) -> str:
-        return "mcp"
+        meta = self._mcp_tool.meta or {}
+        return meta.get("resource_mode", "mcp")
+
+    def get_resource_id(self) -> str | None:
+        meta = self._mcp_tool.meta or {}
+        return meta.get("resource_id")
 
     async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]:
         result = await self._client.call_tool(self.get_identifier(), parameters)

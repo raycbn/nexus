@@ -32,5 +32,8 @@ class Tool(ABC):
     @abstractmethod
     def get_resource_mode(self) -> str: ...
 
+    def get_resource_id(self) -> str | None:
+        return None
+
     @abstractmethod
     async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]: ...

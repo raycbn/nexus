@@ -16,6 +16,9 @@ class LinuxBaseTool(Tool):
     def get_resource_mode(self) -> str:
         return "real"
 
+    def get_resource_id(self) -> str | None:
+        return str(self._resource.id)
+
     def get_required_permissions(self) -> list[str]:
         return ["read"]
 
@@ -221,16 +224,23 @@ class GetDiskUsageTool(LinuxBaseTool):
 
     def get_output_schema(self) -> dict[str, Any]:
         return {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "filesystem": {"type": "string"},
-                    "size": {"type": "string"},
-                    "used": {"type": "string"},
-                    "available": {"type": "string"},
-                    "percent": {"type": "string"},
-                    "mount": {"type": "string"},
+            "type": "object",
+            "properties": {
+                "resource_id": {"type": "string"},
+                "mode": {"type": "string"},
+                "disks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "filesystem": {"type": "string"},
+                            "size": {"type": "string"},
+                            "used": {"type": "string"},
+                            "available": {"type": "string"},
+                            "percent": {"type": "string"},
+                            "mount": {"type": "string"},
+                        },
+                    },
                 },
             },
         }
@@ -283,14 +293,21 @@ class GetProcessesTool(LinuxBaseTool):
 
     def get_output_schema(self) -> dict[str, Any]:
         return {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "pid": {"type": "integer"},
-                    "name": {"type": "string"},
-                    "cpu_percent": {"type": "number"},
-                    "memory_percent": {"type": "number"},
+            "type": "object",
+            "properties": {
+                "resource_id": {"type": "string"},
+                "mode": {"type": "string"},
+                "processes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "pid": {"type": "integer"},
+                            "name": {"type": "string"},
+                            "cpu_percent": {"type": "number"},
+                            "memory_percent": {"type": "number"},
+                        },
+                    },
                 },
             },
         }
@@ -341,14 +358,21 @@ class GetNetworkListenersTool(LinuxBaseTool):
 
     def get_output_schema(self) -> dict[str, Any]:
         return {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "protocol": {"type": "string"},
-                    "local_address": {"type": "string"},
-                    "port": {"type": "integer"},
-                    "process": {"type": "string"},
+            "type": "object",
+            "properties": {
+                "resource_id": {"type": "string"},
+                "mode": {"type": "string"},
+                "listeners": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "protocol": {"type": "string"},
+                            "local_address": {"type": "string"},
+                            "port": {"type": "integer"},
+                            "process": {"type": "string"},
+                        },
+                    },
                 },
             },
         }

@@ -48,6 +48,8 @@ class ToolExecutedEvent(BaseModel):
     tool_name: str
     success: bool
     duration: float = 0.0
+    resource_mode: str | None = None
+    resource_id: str | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

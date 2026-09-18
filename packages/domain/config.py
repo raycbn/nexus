@@ -11,6 +11,14 @@ class NexusSettings(BaseSettings):
     ollama_num_ctx: int = 8192
     ollama_timeout: int = 120
 
+    # --- Linux Lab (local development infrastructure) ---
+    lab_ssh_host: str = "localhost"
+    lab_ssh_port: int = 2222
+    lab_ssh_username: str = "nexus"
+    # Path to a local private SSH key file (gitignored; key contents are never
+    # stored in source, only the path is referenced by configuration).
+    lab_ssh_key_path: str = "infrastructure/lab/ssh_key"
+
     @property
     def ollama_base_url(self) -> str:
         return f"http://{self.ollama_host}:{self.ollama_port}"

@@ -43,6 +43,10 @@ class NexusMCPServer:
                     description=tool.get_description(),
                     input_schema=tool.get_input_schema(),
                     output_schema=tool.get_output_schema(),
+                    meta={
+                        "resource_mode": tool.get_resource_mode(),
+                        "resource_id": tool.get_resource_id(),
+                    },
                 )
             )
         return ListToolsResult(tools=mcp_tools)

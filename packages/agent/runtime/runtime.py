@@ -145,6 +145,8 @@ class AgentRuntime:
                                         tool_name=tool_call.tool_name,
                                         success=True,
                                         duration=tool_duration,
+                                        resource_mode=tool.get_resource_mode(),
+                                        resource_id=tool.get_resource_id(),
                                     )
                                 )
                                 observation = f"Tool {tool_call.tool_name} executed successfully"
@@ -162,6 +164,8 @@ class AgentRuntime:
                                         tool_name=tool_call.tool_name,
                                         success=False,
                                         duration=tool_duration,
+                                        resource_mode=tool.get_resource_mode(),
+                                        resource_id=tool.get_resource_id(),
                                     )
                                 )
                                 observation = f"Tool execution failed: {e}"
