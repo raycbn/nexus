@@ -12,7 +12,11 @@ from packages.domain.models.enums import (
     Severity,
     SourceType,
 )
-from packages.domain.models.incident import Incident
+from packages.domain.models.incident import (
+    Incident,
+    IncidentTimelineEntry,
+    TimelineEventType,
+)
 from packages.domain.models.knowledge_source import KnowledgeSource
 from packages.domain.models.organization import Organization
 from packages.domain.models.policy import Policy
@@ -30,6 +34,7 @@ __all__ = [
     "EventType",
     "Incident",
     "IncidentStatus",
+    "IncidentTimelineEntry",
     "KnowledgeSource",
     "Organization",
     "Policy",
@@ -39,6 +44,7 @@ __all__ = [
     "RiskLevel",
     "Severity",
     "SourceType",
+    "TimelineEventType",
     "Tool",
     "User",
     "Workspace",

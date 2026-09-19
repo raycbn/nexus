@@ -377,27 +377,27 @@ class TestIncidentStatuses:
         )
         assert incident.status == IncidentStatus.INVESTIGATING
 
-    def test_awaiting_approval(self):
+    def test_identified(self):
         incident = Incident(
             organization_id=uuid4(),
             workspace_id=uuid4(),
             title="t",
             description="d",
             severity=Severity.CRITICAL,
-            status=IncidentStatus.AWAITING_APPROVAL,
+            status=IncidentStatus.IDENTIFIED,
         )
-        assert incident.status == IncidentStatus.AWAITING_APPROVAL
+        assert incident.status == IncidentStatus.IDENTIFIED
 
-    def test_mitigating(self):
+    def test_monitoring(self):
         incident = Incident(
             organization_id=uuid4(),
             workspace_id=uuid4(),
             title="t",
             description="d",
             severity=Severity.CRITICAL,
-            status=IncidentStatus.MITIGATING,
+            status=IncidentStatus.MONITORING,
         )
-        assert incident.status == IncidentStatus.MITIGATING
+        assert incident.status == IncidentStatus.MONITORING
 
     def test_resolved(self):
         incident = Incident(
@@ -409,17 +409,6 @@ class TestIncidentStatuses:
             status=IncidentStatus.RESOLVED,
         )
         assert incident.status == IncidentStatus.RESOLVED
-
-    def test_failed(self):
-        incident = Incident(
-            organization_id=uuid4(),
-            workspace_id=uuid4(),
-            title="t",
-            description="d",
-            severity=Severity.CRITICAL,
-            status=IncidentStatus.FAILED,
-        )
-        assert incident.status == IncidentStatus.FAILED
 
     def test_closed(self):
         incident = Incident(
@@ -599,7 +588,7 @@ class TestMultiTenancyExplicit:
                     "workspace_id": None,
                     "title": "t",
                     "description": "d",
-                    "severity": Severity.INFO,
+                    "severity": Severity.LOW,
                     "status": IncidentStatus.DETECTED,
                 },
             ),

@@ -167,7 +167,7 @@ class TestInvestigationWithFaultInjection:
                         )
                     ],
                 ),
-__import__("packages.agent.llm.contract", fromlist=["LLMResponse"]).LLMResponse(
+                __import__("packages.agent.llm.contract", fromlist=["LLMResponse"]).LLMResponse(
                     content=(
                         "Investigation complete: API latency confirmed via /api/slow "
                         "endpoint with 5s delay. Infrastructure (CPU, memory, disk, "

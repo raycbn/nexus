@@ -28,18 +28,17 @@ class RiskLevel(StrEnum):
 class IncidentStatus(StrEnum):
     DETECTED = "detected"
     INVESTIGATING = "investigating"
-    AWAITING_APPROVAL = "awaiting_approval"
-    MITIGATING = "mitigating"
+    IDENTIFIED = "identified"
+    MONITORING = "monitoring"
     RESOLVED = "resolved"
-    FAILED = "failed"
     CLOSED = "closed"
 
 
 class Severity(StrEnum):
-    INFO = "info"
-    WARNING = "warning"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
     CRITICAL = "critical"
-    EMERGENCY = "emergency"
 
 
 class SourceType(StrEnum):
@@ -64,6 +63,10 @@ class EventType(StrEnum):
     INCIDENT_CREATED = "incident_created"
     INCIDENT_UPDATED = "incident_updated"
     INCIDENT_RESOLVED = "incident_resolved"
+    INCIDENT_STATUS_CHANGED = "incident_status_changed"
+    INCIDENT_SEVERITY_CHANGED = "incident_severity_changed"
+    INVESTIGATION_ATTACHED = "investigation_attached"
+    INCIDENT_CLOSED = "incident_closed"
     AUDIT_LOGGED = "audit_logged"
     CONNECTOR_CONNECTED = "connector_connected"
     CONNECTOR_DISCONNECTED = "connector_disconnected"
