@@ -118,6 +118,64 @@ curl -i http://localhost:8080/api/error
 # Returns HTTP 500 with error JSON
 ```
 
+## Fault Injection Framework
+
+The lab supports controlled fault injection for testing investigation workflows. The NEXUS Fault Injection Framework provides deterministic, reversible fault scenarios:
+
+### Available Scenarios
+
+| Scenario | Mechanism | Effect |
+|----------|-----------|--------|
+| `api_latency` | Sets `LAB_APP_SLOW_SECONDS` env var | Increases `/api/slow` latency |
+| `api_failure` | Uses `/api/error` endpoint | Simulates API failure (HTTP 500) |
+| `redis_unavailable` | `docker pause lab-redis` | Redis unavailable (`/api/redis` returns 503) |
+| `postgres_unavailable` | `docker pause lab-postgres` | PostgreSQL unavailable (`/api/db` returns 503) |
+
+### Usage via Python API
+```python
+from packages.fault_injection import get_registry, FaultScenarioId
+
+registry = get_registry()
+
+# Activate latency fault
+registry.activate(FaultScenarioId.API_LATENCY)
+
+# ... run tests ...
+
+# Cleanup
+get_registry().deactivate(FaultScenarioId.API_LATENCY)
+```
+
+### Deterministic Tests (no Docker)
+```bash
+pytest tests/unit/fault_injection/ -v
+```
+
+### Live Tests (requires Docker lab)
+```bash
+# Ensure lab is running
+docker compose -f compose.yml up -d
+
+# Run fault injection live tests
+pytest tests/live/test_fault_injection_live.py -m live -v
+
+# Run investigation with fault injection
+pytest tests/live/test_investigation_fault_integration.py -m live -v
+```
+
+### Manual Container Control (for debugging)
+```bash
+# Pause services (simulate unavailability)
+docker pause lab-redis
+docker pause lab-postgres
+
+# Resume services
+docker unpause lab-redis
+docker unpause lab-postgres
+```
+
+⚠️ **Safety**: Only use these commands in the NEXUS lab environment. Fault injection is designed for the controlled lab environment only.
+
 ## Manual Testing
 
 ### SSH

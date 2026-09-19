@@ -48,6 +48,9 @@ target-version = "py312"
 line-length = 100
 src = ["apps", "packages", "tests"]
 
+[tool.ruff.per-file-ignores]
+"packages/fault_injection/scenarios.py" = ["TRY201"]
+
 [tool.ruff.lint]
 select = [
     "E",

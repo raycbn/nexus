@@ -49,7 +49,17 @@ class GetApplicationHealthTool(LinuxBaseTool):
         return self._settings.lab_app_base_url
 
     def _slow_seconds(self) -> int:
-        return max(1, min(30, self._settings.lab_app_slow_seconds))
+        import os
+
+        # Check for fault injection override first
+        env_slow = os.environ.get("LAB_APP_SLOW_SECONDS")
+        if env_slow:
+            try:
+                return max(1, min(30, int(env_slow)))
+            except ValueError:
+                pass
+        # Fall back to settings
+        return self._settings.lab_app_slow_seconds
 
     def _curl_cmd(self, path: str, format_str: str = "%{http_code}") -> str:
         url = f"{self._base_url()}{path}"
