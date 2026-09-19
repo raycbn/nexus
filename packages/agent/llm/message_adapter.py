@@ -19,7 +19,8 @@ class OllamaMessageAdapter:
                 ollama_messages.append(
                     {
                         "role": "tool",
-                        "tool_name": msg.tool_name or "",
+                        "tool_call_id": msg.tool_call_id or "",
+                        "name": msg.tool_name or "",
                         "content": msg.content or "",
                     }
                 )
@@ -50,13 +51,17 @@ class OllamaMessageAdapter:
         import re
 
         thinking_pattern = re.compile(r"<\|thinking_start\|>.*?<\|thinking_end\|>", re.DOTALL)
-        cleaned = thinking_pattern.sub("", content)
+        content = thinking_pattern.sub("", content)
 
-        if "</think>" in cleaned:
-            last_marker = cleaned.rfind("</think>")
-            cleaned = cleaned[last_marker + len("</think>") :]
-
-        return cleaned.strip()
+        # Use regex to find end-think markers flexibly
+        # Pattern matches: END + optional ZWSP + THINK, or <|end_think|>, or TODO
+        # Note: \u200b in regular string = ZWSP character (U+200B)
+        end_think_pattern = re.compile(r"(?:END\u200b?THINK|<\|end_think_\|>|TODO)")
+        match = end_think_pattern.search(content)
+        if match:
+            return content[match.end() :].strip()
+        else:
+            return content.strip()
 
     @staticmethod
     def from_ollama_response(
@@ -94,5 +99,6 @@ class OllamaMessageAdapter:
         return LLMMessage(
             role="tool",
             tool_name=tool_name,
+            tool_call_id=tool_call_id,
             content=f"Tool result for {tool_name} (call {tool_call_id}): {result}",
         )

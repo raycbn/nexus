@@ -195,6 +195,7 @@ class AgentRuntime:
                         LLMMessage(
                             role="tool",
                             tool_name=tool_call.tool_name,
+                            tool_call_id=tool_call.id,
                             content=observation,
                         )
                     )

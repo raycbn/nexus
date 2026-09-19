@@ -231,11 +231,11 @@ class TestOllamaMessageAdapterFromOllama:
         raw = {
             "message": {
                 "role": "assistant",
-                "content": "Okay, let me think about this.\n</think>\n\nHello! How can I help?",
+                "content": "Okay, let me think about this.\nTODO\n\nHello! How can I help?",
             }
         }
         result = OllamaMessageAdapter.from_ollama_response(raw)
-        assert "</think>" not in result.content
+        assert "TODO" not in result.content
         assert "let me think" not in result.content
         assert "Hello" in result.content
         assert "How can I help" in result.content
@@ -323,6 +323,7 @@ class TestOllamaMessageAdapterFromOllama:
             LLMMessage(
                 role="tool",
                 tool_name="get_system_info",
+                tool_call_id="call-1",
                 content="Tool result for get_system_info (call call-1): OK",
             ),
             LLMMessage(role="assistant", content="The server is healthy."),
@@ -332,7 +333,8 @@ class TestOllamaMessageAdapterFromOllama:
         assert result[1]["role"] == "assistant"
         assert result[1]["tool_calls"][0]["id"] == "call-1"
         assert result[2]["role"] == "tool"
-        assert result[2]["tool_name"] == "get_system_info"
+        assert result[2]["name"] == "get_system_info"
+        assert result[2]["tool_call_id"] == "call-1"
         assert result[3]["role"] == "assistant"
         assert result[3]["content"] == "The server is healthy."
 
@@ -356,7 +358,7 @@ class TestOllamaMessageAdapterToolProtocol:
         result = OllamaMessageAdapter.to_ollama_messages([msg])
         assert len(result) == 1
         assert result[0]["role"] == "tool"
-        assert result[0]["tool_name"] == "get_system_info"
+        assert result[0]["name"] == "get_system_info"
         assert result[0]["content"] == "CPU: 45%"
         assert "user" not in [m["role"] for m in result]
 
@@ -364,14 +366,14 @@ class TestOllamaMessageAdapterToolProtocol:
         msg = LLMMessage(role="tool", content="some result")
         result = OllamaMessageAdapter.to_ollama_messages([msg])
         assert result[0]["role"] == "tool"
-        assert result[0]["tool_name"] == ""
+        assert result[0]["name"] == ""
         assert result[0]["content"] == "some result"
 
     def test_tool_result_is_not_user_role(self):
         msg = LLMMessage(role="tool", tool_name="my_tool", content="result data")
         result = OllamaMessageAdapter.to_ollama_messages([msg])
         assert result[0]["role"] == "tool"
-        assert result[0]["tool_name"] == "my_tool"
+        assert result[0]["name"] == "my_tool"
         for m in result:
             assert m["role"] != "user" or "tool_name" not in m
 
@@ -392,6 +394,7 @@ class TestOllamaMessageAdapterToolProtocol:
             LLMMessage(
                 role="tool",
                 tool_name="get_system_info",
+                tool_call_id="call-1",
                 content="Tool result for get_system_info (call call-1): OK",
             ),
             LLMMessage(role="assistant", content="The server is healthy."),
@@ -408,7 +411,8 @@ class TestOllamaMessageAdapterToolProtocol:
         assert result[1]["tool_calls"][0]["function"]["arguments"] == '{"target": "server1"}'
 
         assert result[2]["role"] == "tool"
-        assert result[2]["tool_name"] == "get_system_info"
+        assert result[2]["name"] == "get_system_info"
+        assert result[2]["tool_call_id"] == "call-1"
         assert result[2]["content"] == "Tool result for get_system_info (call call-1): OK"
 
         assert result[3]["role"] == "assistant"
@@ -436,11 +440,13 @@ class TestOllamaMessageAdapterToolProtocol:
             LLMMessage(
                 role="tool",
                 tool_name="get_cpu_usage",
+                tool_call_id="1",
                 content="Tool result for get_cpu_usage (call 1): 45%",
             ),
             LLMMessage(
                 role="tool",
                 tool_name="get_memory_usage",
+                tool_call_id="2",
                 content="Tool result for get_memory_usage (call 2): 60%",
             ),
             LLMMessage(
@@ -459,12 +465,13 @@ class TestOllamaMessageAdapterToolProtocol:
 
         tool_msgs = [m for m in result if m["role"] == "tool"]
         assert len(tool_msgs) == 2
-        tool_names = {m["tool_name"] for m in tool_msgs}
+        tool_names = {m["name"] for m in tool_msgs}
         assert "get_cpu_usage" in tool_names
         assert "get_memory_usage" in tool_names
         for tm in tool_msgs:
             assert "content" in tm
             assert tm["content"].startswith("Tool result for")
+            assert "tool_call_id" in tm
 
         assert result[4]["role"] == "assistant"
         assert result[4]["content"] == "CPU at 45%, memory at 60%."
@@ -503,6 +510,7 @@ class TestOllamaMessageAdapterToolProtocol:
             LLMMessage(
                 role="tool",
                 tool_name="unknown_tool",
+                tool_call_id="t1",
                 content="Tool result for unknown_tool (call t1): Denied",
             ),
             LLMMessage(
@@ -514,6 +522,7 @@ class TestOllamaMessageAdapterToolProtocol:
         assert result[0]["role"] == "user"
         assert result[1]["role"] == "assistant"
         assert result[2]["role"] == "tool"
-        assert result[2]["tool_name"] == "unknown_tool"
+        assert result[2]["name"] == "unknown_tool"
+        assert result[2]["tool_call_id"] == "t1"
         assert result[3]["role"] == "assistant"
         assert result[3]["content"] == "I cannot access that resource."
