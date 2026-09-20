@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from apps.api.routes.agents import router as agents_router
 from apps.api.routes.audit import router as audit_router
 from apps.api.routes.incidents import router as incidents_router
+from apps.api.routes.investigations import router as investigations_router
 from apps.api.routes.resources import router as resources_router
 
 
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(resources_router, prefix="/api")
     app.include_router(agents_router, prefix="/api")
     app.include_router(audit_router, prefix="/api")
+    app.include_router(investigations_router, prefix="/api")
 
     @app.get("/health")
     async def health_check():

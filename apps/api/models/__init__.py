@@ -137,3 +137,52 @@ class InvestigationSummaryDTO(BaseModel):
     has_conclusion: bool
     started_at: datetime
     completed_at: datetime | None = None
+
+
+class EvidenceDTO(BaseModel):
+    id: UUID
+    source_tool: str
+    resource_id: UUID | None = None
+    observed_value: dict[str, Any] | str | None = None
+    mode: str
+    relevance: float
+    created_at: datetime
+
+
+class HypothesisDTO(BaseModel):
+    id: UUID
+    text: str
+    supporting_evidence_ids: list[UUID]
+    contradicting_evidence_ids: list[UUID]
+    status: str
+
+
+class ValidationDTO(BaseModel):
+    id: UUID
+    action_tool: str
+    expected_condition: str
+    actual_result: dict[str, Any] | str | None = None
+    passed: bool | None = None
+
+
+class ConclusionDTO(BaseModel):
+    finding: str
+    confidence: float
+    supporting_evidence_ids: list[UUID]
+    unresolved_uncertainty: str | None = None
+
+
+class InvestigationDetailDTO(BaseModel):
+    id: UUID
+    objective: str
+    status: str
+    started_at: datetime
+    completed_at: datetime | None = None
+    evidence: list[EvidenceDTO]
+    hypotheses: list[HypothesisDTO]
+    validations: list[ValidationDTO]
+    conclusion: ConclusionDTO | None = None
+
+
+class InvestigationCreateDTO(BaseModel):
+    objective: str = Field(min_length=1, max_length=1000)

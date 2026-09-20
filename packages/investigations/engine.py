@@ -50,6 +50,7 @@ class InvestigationEngine:
         objective: str,
         collection_responses: list[LLMResponse],
     ) -> AgentState:
+        self._investigation.objective = objective
         llm = MockLLMProvider(collection_responses)
         old_llm = self._runtime._llm
         self._runtime._llm = llm
