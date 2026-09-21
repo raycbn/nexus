@@ -1,0 +1,32 @@
+services:
+  nexus-postgres:
+    image: postgres:16-alpine
+    container_name: nexus-persistence
+    environment:
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: nexus
+      POSTGRES_DB: nexus
+    ports:
+      - "5433:5432"
+    volumes:
+      - nexus_postgres_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - nexus-network
+
+volumes:
+  nexus_postgres_data:
+
+networks:
+  nexus-network:
+    driver: bridge

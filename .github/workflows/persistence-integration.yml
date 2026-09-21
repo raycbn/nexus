@@ -1,0 +1,101 @@
+name: Persistence Integration Tests
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "packages/persistence/**"
+      - "packages/investigations/**"
+      - "packages/incidents/**"
+      - "tests/integration/**"
+      - "tests/unit/persistence/**"
+      - "tests/unit/incidents/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/persistence/**"
+      - "packages/investigations/**"
+      - "packages/incidents/**"
+      - "tests/integration/**"
+      - "tests/unit/persistence/**"
+      - "tests/unit/incidents/**"
+
+env:
+  DATABASE_HOST: localhost
+  DATABASE_PORT: 5432
+  DATABASE_USER: nexus
+  DATABASE_PASSWORD: nexus
+  DATABASE_NAME: nexus
+
+jobs:
+  persistence-integration:
+    name: Persistence Integration Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus
+          POSTGRES_DB: nexus
+        options: >-
+          --health-cmd "pg_isready -U nexus -d nexus"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U nexus -d nexus; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Run Alembic migrations
+        run: |
+          cd packages/persistence
+          alembic upgrade head
+
+      - name: Verify Alembic state
+        run: |
+          cd packages/persistence
+          alembic current
+          alembic heads
+
+      - name: Run Investigation PostgreSQL integration tests
+        run: |
+          pytest tests/integration/test_investigation_postgres_repository.py -v
+
+      - name: Run persistence unit tests
+        run: |
+          pytest tests/unit/persistence -v
+
+      - name: Run Incident unit tests
+        run: |
+          pytest tests/unit/incidents -v
+
+      - name: Run Ruff
+        run: |
+          ruff check packages/persistence packages/investigations packages/incidents tests/integration/test_investigation_postgres_repository.py tests/unit/persistence tests/unit/incidents
+
+      - name: Run Ruff format check
+        run: |
+          ruff format --check packages/persistence packages/investigations packages/incidents tests/integration/test_investigation_postgres_repository.py tests/unit/persistence tests/unit/incidents
