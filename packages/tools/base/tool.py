@@ -35,5 +35,8 @@ class Tool(ABC):
     def get_resource_id(self) -> str | None:
         return None
 
+    def get_connector_capabilities(self):
+        return None
+
     @abstractmethod
     async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]: ...

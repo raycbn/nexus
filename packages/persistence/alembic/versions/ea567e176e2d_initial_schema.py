@@ -121,11 +121,16 @@ def upgrade() -> None:
     op.create_table(
         "investigations",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("organization_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("workspace_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("objective", sa.Text(), nullable=False),
         sa.Column("status", investigationstatus_enum, nullable=False, server_default="started"),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index(
+        "ix_investigations_organization_id", "investigations", ["organization_id"], unique=False
     )
     op.create_index("ix_investigations_started_at", "investigations", ["started_at"], unique=False)
 
@@ -340,39 +345,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop tables in reverse dependency order
-    op.drop_index("ix_audit_events_incident_id", table_name="audit_events")
-    op.drop_index("ix_audit_events_created_at", table_name="audit_events")
-    op.drop_index("ix_audit_events_event_type", table_name="audit_events")
-    op.drop_index("ix_audit_events_organization_id", table_name="audit_events")
-    op.drop_table("audit_events")
-
-    op.drop_index("ix_incident_timeline_created_at", table_name="incident_timeline_entries")
-    op.drop_index("ix_incident_timeline_incident_id", table_name="incident_timeline_entries")
-    op.drop_table("incident_timeline_entries")
-
-    op.drop_index("ix_incidents_updated_at", table_name="incidents")
-    op.drop_index("ix_incidents_created_at", table_name="incidents")
-    op.drop_index("ix_incidents_investigation_id", table_name="incidents")
-    op.drop_index("ix_incidents_severity", table_name="incidents")
-    op.drop_index("ix_incidents_status", table_name="incidents")
-    op.drop_index("ix_incidents_organization_id", table_name="incidents")
-    op.drop_table("incidents")
-
-    op.drop_table("conclusions")
-
-    op.drop_index("ix_validations_investigation_id", table_name="validations")
-    op.drop_table("validations")
-
-    op.drop_index("ix_hypotheses_investigation_id", table_name="hypotheses")
-    op.drop_table("hypotheses")
-
-    op.drop_index("ix_evidence_timestamp", table_name="evidence")
-    op.drop_index("ix_evidence_investigation_id", table_name="evidence")
-    op.drop_table("evidence")
-
-    op.drop_index("ix_investigations_started_at", table_name="investigations")
-    op.drop_table("investigations")
+    # Drop tables in reverse dependency order using raw SQL for reliability
+    op.execute("DROP TABLE IF EXISTS audit_events CASCADE")
+    op.execute("DROP TABLE IF EXISTS incident_timeline_entries CASCADE")
+    op.execute("DROP TABLE IF EXISTS incidents CASCADE")
+    op.execute("DROP TABLE IF EXISTS conclusions CASCADE")
+    op.execute("DROP TABLE IF EXISTS validations CASCADE")
+    op.execute("DROP TABLE IF EXISTS hypotheses CASCADE")
+    op.execute("DROP TABLE IF EXISTS evidence CASCADE")
+    op.execute("DROP TABLE IF EXISTS investigations CASCADE")
 
     # Drop enum types after tables are dropped
     resultstatus_enum.drop(op.get_bind(), checkfirst=True)

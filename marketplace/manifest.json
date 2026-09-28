@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "name": "nexus-public-api",
+  "display_name": "NEXUS Public API",
+  "description": "Tenant-scoped integrations for resources and incidents.",
+  "version": "0.1.0",
+  "authentication": {
+    "type": "api_key",
+    "header": "X-API-Key",
+    "prefix": "nx_live_"
+  },
+  "scopes": ["resources.read", "incidents.read"],
+  "base_path": "/api/public/v1",
+  "endpoints": ["GET /resources", "GET /incidents"],
+  "sdk": {
+    "language": "python",
+    "entrypoint": "sdk.python.NexusClient"
+  }
+}

@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 import pytest
-from packages.domain.models.enums import ActorType, EventType, ResultStatus
+from packages.domain.models.enums import ActorType, EventType, ResourceType, ResultStatus
 from packages.domain.models.incident import (
     Incident,
     IncidentStatus,
@@ -9,6 +9,8 @@ from packages.domain.models.incident import (
     Severity,
     TimelineEventType,
 )
+from packages.domain.models.resource import Resource
+from packages.domain.resource_graph import ResourceGraph
 from packages.incidents.engine import IncidentEngine
 from packages.incidents.in_memory_repository import InMemoryIncidentRepository
 from packages.investigations.models import (
@@ -236,37 +238,46 @@ class TestInMemoryIncidentRepository:
         created = await repo.create(incident)
         assert created.id == incident.id
 
-        retrieved = await repo.get(incident.id)
+        retrieved = await repo.get(incident.id, incident.organization_id, incident.workspace_id)
         assert retrieved is not None
         assert retrieved.id == incident.id
         assert retrieved.title == incident.title
 
     @pytest.mark.asyncio
     async def test_get_nonexistent(self, repo):
-        result = await repo.get(uuid4())
+        result = await repo.get(uuid4(), uuid4())
         assert result is None
 
     @pytest.mark.asyncio
     async def test_update(self, repo, incident):
         await repo.create(incident)
         incident.title = "Updated"
-        updated = await repo.update(incident)
+        updated = await repo.update(incident, incident.organization_id, incident.workspace_id)
         assert updated.title == "Updated"
 
-        retrieved = await repo.get(incident.id)
+        retrieved = await repo.get(incident.id, incident.organization_id, incident.workspace_id)
         assert retrieved.title == "Updated"
 
     @pytest.mark.asyncio
     async def test_update_nonexistent(self, repo, incident):
         with pytest.raises(ValueError):
-            await repo.update(incident)
+            await repo.update(incident, incident.organization_id, incident.workspace_id)
 
     @pytest.mark.asyncio
     async def test_delete(self, repo, incident):
         await repo.create(incident)
-        assert await repo.delete(incident.id) is True
-        assert await repo.get(incident.id) is None
-        assert await repo.delete(incident.id) is False
+        assert (
+            await repo.delete(incident.id, incident.organization_id, incident.workspace_id)
+            is True
+        )
+        assert (
+            await repo.get(incident.id, incident.organization_id, incident.workspace_id)
+            is None
+        )
+        assert (
+            await repo.delete(incident.id, incident.organization_id, incident.workspace_id)
+            is False
+        )
 
     @pytest.mark.asyncio
     async def test_list_filtering(self, repo, org_id):
@@ -405,7 +416,7 @@ class TestInMemoryIncidentRepository:
         await repo.create(inc1)
         await repo.create(inc2)
 
-        results = await repo.get_by_resource(resource_id)
+        results = await repo.get_by_resource(resource_id, org_id)
         assert len(results) == 1
         assert results[0].title == "A"
 
@@ -433,23 +444,103 @@ class TestInMemoryIncidentRepository:
         await repo.create(inc1)
         await repo.create(inc2)
 
-        result = await repo.get_by_investigation(inv_id)
+        result = await repo.get_by_investigation(inv_id, org_id)
         assert result is not None
         assert result.title == "A"
 
-        result = await repo.get_by_investigation(uuid4())
+        result = await repo.get_by_investigation(uuid4(), org_id)
         assert result is None
 
 
+class TestIncidentSuggestion:
+    def test_suggestion_uses_conclusion_and_resources(self):
+        resource_id = uuid4()
+        investigation = Investigation(
+            organization_id=uuid4(),
+            objective="Investigate API",
+            evidence=[Evidence(source_tool="health", resource_id=resource_id)],
+            hypotheses=[Hypothesis(text="API unhealthy", status=HypothesisStatus.VALIDATED)],
+            conclusion=Conclusion(
+                finding="API is unhealthy.",
+                confidence=0.9,
+                supporting_evidence_ids=[],
+            ),
+        )
+
+        suggestion = IncidentEngine.suggest_incident_from_investigation(investigation)
+
+        assert suggestion.title == "API is unhealthy"
+        assert suggestion.description == "API is unhealthy."
+        assert suggestion.severity == Severity.HIGH
+        assert suggestion.affected_resource_ids == [resource_id]
+        assert suggestion.should_create is True
+        assert suggestion.reasons
+
+    def test_suggestion_uses_medium_for_unresolved_contradiction(self):
+        investigation = Investigation(
+            organization_id=uuid4(),
+            objective="Investigate Redis",
+            hypotheses=[Hypothesis(text="Redis issue", status=HypothesisStatus.CONTRADICTED)],
+        )
+
+        suggestion = IncidentEngine.suggest_incident_from_investigation(investigation)
+
+        assert suggestion.title == "Investigate Redis"
+        assert suggestion.severity == Severity.MEDIUM
+        assert suggestion.should_create is False
+
+    def test_suggestion_defaults_to_low_without_validation(self):
+        investigation = Investigation(
+            organization_id=uuid4(),
+            objective="Investigate API",
+            hypotheses=[Hypothesis(text="API issue")],
+        )
+
+        suggestion = IncidentEngine.suggest_incident_from_investigation(investigation)
+
+        assert suggestion.title == "Investigate API"
+        assert suggestion.severity == Severity.LOW
+        assert suggestion.affected_resource_ids == []
+
+
 class TestIncidentEngine:
-    @pytest.fixture
-    def org_id(self):
-        return uuid4()
+    def test_expand_affected_resource_ids(self):
+        organization_id = uuid4()
+        host = Resource(
+            organization_id=organization_id,
+            name="linux-lab-01",
+            resource_type=ResourceType.LINUX_SERVER,
+        )
+        service = Resource(
+            organization_id=organization_id,
+            name="nginx",
+            resource_type=ResourceType.SERVICE,
+            parent_resource_id=host.id,
+        )
+        graph = ResourceGraph([host, service])
+
+        assert IncidentEngine.expand_affected_resource_ids([service.id], graph) == [
+            service.id,
+            host.id,
+        ]
 
     @pytest.fixture
-    def engine(self, org_id):
+    def tenant_context(self):
+        from uuid import UUID
+
+        from packages.domain.models.context import TenantContext
+
+        return TenantContext(
+            user_id=UUID("00000000-0000-0000-0000-000000000001"),
+            organization_id=UUID("00000000-0000-0000-0000-000000000002"),
+            workspace_id=UUID("00000000-0000-0000-0000-000000000003"),
+            role="admin",
+        )
+
+    @pytest.fixture
+    def engine(self, tenant_context):
         repo = InMemoryIncidentRepository()
-        return IncidentEngine(repository=repo, organization_id=org_id)
+        return IncidentEngine(repository=repo, tenant_context=tenant_context)
 
     @pytest.fixture
     def actor_id(self):
@@ -581,6 +672,7 @@ class TestIncidentEngine:
         await engine.transition_status(incident.id, IncidentStatus.INVESTIGATING, actor_id)
 
         investigation = Investigation(
+            organization_id=uuid4(),
             objective="Test investigation",
             status=InvestigationStatus.COMPLETED,
             evidence=[Evidence(source_tool="tool1", observed_value="value1")],
@@ -599,15 +691,65 @@ class TestIncidentEngine:
         updated = await engine.attach_investigation(incident.id, investigation, actor_id)
         assert updated is not None
         assert updated.investigation_id == investigation.id
+        timeline_count = len(updated.timeline)
+        audit_count = len(engine.get_audit_events())
+        repeated = await engine.attach_investigation(incident.id, investigation, actor_id)
+        assert repeated is not None
+        assert len(repeated.timeline) == timeline_count
+        assert len(engine.get_audit_events()) == audit_count
         assert len(updated.evidence_ids) == 1
         assert updated.conclusion_finding == "Found it"
         assert updated.conclusion_confidence == 0.9
+        assert any(
+            entry.event_type == TimelineEventType.CONCLUSION_REACHED
+            for entry in updated.timeline
+        )
+        assert any(
+            event.event_type == EventType.INCIDENT_STATUS_CHANGED
+            for event in engine.get_audit_events()
+        )
         # Should transition from INVESTIGATING to IDENTIFIED
         assert updated.status == IncidentStatus.IDENTIFIED
 
     @pytest.mark.asyncio
+    async def test_create_incident_from_investigation_expands_resource_lineage(
+        self, engine, actor_id
+    ):
+        host = Resource(
+            organization_id=engine._tenant.organization_id,
+            workspace_id=engine._tenant.workspace_id,
+            name="linux-lab-01",
+            resource_type=ResourceType.LINUX_SERVER,
+        )
+        service = Resource(
+            organization_id=engine._tenant.organization_id,
+            workspace_id=engine._tenant.workspace_id,
+            name="nginx",
+            resource_type=ResourceType.SERVICE,
+            parent_resource_id=host.id,
+        )
+        investigation = Investigation(
+            organization_id=engine._tenant.organization_id,
+            objective="Investigate nginx",
+            status=InvestigationStatus.COMPLETED,
+        )
+
+        incident = await engine.create_incident_from_investigation(
+            title="Nginx issue",
+            description="d",
+            severity=Severity.HIGH,
+            affected_resource_ids=[service.id],
+            investigation=investigation,
+            actor_id=actor_id,
+            resource_graph=ResourceGraph([host, service]),
+        )
+
+        assert incident.affected_resource_ids == [service.id, host.id]
+
+    @pytest.mark.asyncio
     async def test_create_incident_from_investigation(self, engine, actor_id, resource_id):
         investigation = Investigation(
+            organization_id=uuid4(),
             objective="Test investigation",
             status=InvestigationStatus.COMPLETED,
             evidence=[Evidence(source_tool="tool1", observed_value="value1")],
@@ -637,6 +779,17 @@ class TestIncidentEngine:
         assert incident.investigation_id == investigation.id
         assert len(incident.evidence_ids) == 1
         assert incident.conclusion_finding == "Found it"
+
+        duplicate = await engine.create_incident_from_investigation(
+            title="Duplicate",
+            description="Should reuse existing incident",
+            severity=Severity.CRITICAL,
+            affected_resource_ids=[resource_id],
+            investigation=investigation,
+            actor_id=actor_id,
+        )
+        assert duplicate.id == incident.id
+        assert duplicate.title == "From Investigation"
 
     @pytest.mark.asyncio
     async def test_list_incidents(self, engine, actor_id, resource_id):
@@ -676,6 +829,7 @@ class TestIncidentEngine:
     @pytest.mark.asyncio
     async def test_get_by_investigation(self, engine, actor_id, resource_id):
         investigation = Investigation(
+            organization_id=uuid4(),
             objective="Test",
             status=InvestigationStatus.COMPLETED,
             conclusion=Conclusion(finding="Found", confidence=0.9, supporting_evidence_ids=[]),

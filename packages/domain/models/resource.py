@@ -9,6 +9,8 @@ from packages.domain.models.enums import ResourceType
 class Resource(NexusTimestampedModel):
     organization_id: UUID
     workspace_id: UUID | None = None
+    owner_user_id: UUID | None = None
+    parent_resource_id: UUID | None = None
     name: str
     resource_type: ResourceType
     environment: str = "development"

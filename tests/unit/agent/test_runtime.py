@@ -155,3 +155,41 @@ def test_runtime_uses_max_iterations_default():
 
 def asyncio_run(coro):
     return asyncio.new_event_loop().run_until_complete(coro)
+
+def test_runtime_passes_real_tool_result_and_system_instructions_to_llm():
+    responses = [
+        LLMResponse(
+            content="",
+            tool_calls=[
+                {"id": "1", "tool_name": "get_system_info", "arguments": {}}
+            ],
+        ),
+        LLMResponse(content="done"),
+    ]
+    runtime, _registry = make_simple_runtime(responses)
+    agent = make_test_agent()
+    agent.system_instructions = "You are a Linux investigator."
+    result = asyncio_run(
+        runtime.run("Investigate host", agent, allowed_tool_identifiers=["get_system_info"])
+    )
+    assert result.status == AgentStatus.COMPLETED
+    assert result.tool_results[0]["structured_content"]["hostname"] == "test-server"
+    assert result.messages[0].role == "system"
+    assert "Linux investigator" in (result.messages[0].content or "")
+    assert result.messages[2].role == "assistant"
+    assert result.messages[3].role == "tool"
+    assert "test-server" in (result.messages[3].content or "")
+
+def test_runtime_collects_read_only_baseline():
+    runtime, _registry = make_simple_runtime([LLMResponse(content="unused")])
+    agent = make_test_agent()
+    result = asyncio_run(
+        runtime.collect_read_only_tools(
+            agent,
+            allowed_tool_identifiers=["get_system_info"],
+        )
+    )
+    assert result.status == AgentStatus.COMPLETED
+    assert len(result.tool_results) == 1
+    assert result.tool_results[0]["tool_name"] == "get_system_info"
+    assert result.tool_results[0]["structured_content"]["hostname"] == "test-server"

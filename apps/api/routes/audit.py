@@ -1,15 +1,17 @@
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
-from packages.domain.models.audit_event import AuditEvent
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
+from packages.auth import get_tenant_context
+from packages.domain.models.context import TenantContext
+from packages.persistence.repositories.audit import AuditEventRepository
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from apps.api.dependencies import get_db_session
 
 router = APIRouter(prefix="/audit", tags=["audit"])
-
-
-# In-memory store for development
-_audit_events: list[AuditEvent] = []
+TenantContextDep = Annotated[TenantContext, Depends(get_tenant_context)]
 
 
 class AuditEventDTO(BaseModel):
@@ -23,7 +25,7 @@ class AuditEventDTO(BaseModel):
     tool_id: UUID | None = None
     action: str
     result_status: str
-    metadata: dict[str, Any]
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: Any
 
 
@@ -34,56 +36,7 @@ class AuditEventListResponseDTO(BaseModel):
     offset: int
 
 
-@router.get("", response_model=AuditEventListResponseDTO)
-async def list_audit_events(
-    actor_type: str | None = Query(None),
-    event_type: str | None = Query(None),
-    resource_id: UUID | None = Query(None),
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-) -> AuditEventListResponseDTO:
-    events = list(_audit_events)
-
-    if actor_type:
-        events = [e for e in events if e.actor_type.value == actor_type]
-    if event_type:
-        events = [e for e in events if e.event_type.value == event_type]
-    if resource_id:
-        events = [e for e in events if e.resource_id == resource_id]
-
-    events.sort(key=lambda x: x.created_at, reverse=True)
-    total = len(events)
-    events = events[offset : offset + limit]
-
-    return AuditEventListResponseDTO(
-        events=[
-            AuditEventDTO(
-                id=e.id,
-                organization_id=e.organization_id,
-                workspace_id=e.workspace_id,
-                actor_type=e.actor_type.value,
-                actor_id=e.actor_id,
-                event_type=e.event_type.value,
-                resource_id=e.resource_id,
-                tool_id=e.tool_id,
-                action=e.action,
-                result_status=e.result_status.value,
-                metadata=e.metadata,
-                created_at=e.created_at,
-            )
-            for e in events
-        ],
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
-
-
-@router.get("/{event_id}", response_model=AuditEventDTO)
-async def get_audit_event(event_id: UUID) -> AuditEventDTO:
-    event = next((e for e in _audit_events if e.id == event_id), None)
-    if not event:
-        raise HTTPException(status_code=404, detail="Audit event not found")
+def _to_dto(event) -> AuditEventDTO:
     return AuditEventDTO(
         id=event.id,
         organization_id=event.organization_id,
@@ -98,3 +51,49 @@ async def get_audit_event(event_id: UUID) -> AuditEventDTO:
         metadata=event.metadata,
         created_at=event.created_at,
     )
+
+
+@router.get("", response_model=AuditEventListResponseDTO)
+async def list_audit_events(
+    tenant: TenantContextDep,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    actor_type: str | None = Query(None),
+    event_type: str | None = Query(None),
+    resource_id: UUID | None = Query(None),
+    result_status: str | None = Query(None),
+    sort_by: str = Query("created_at"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> AuditEventListResponseDTO:
+    repository = AuditEventRepository(session)
+    events, total = await repository.list(
+        organization_id=tenant.organization_id,
+        limit=limit,
+        offset=offset,
+        actor_type=actor_type,
+        event_type=event_type,
+        resource_id=resource_id,
+        result_status=result_status,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    return AuditEventListResponseDTO(
+        events=[_to_dto(event) for event in events],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/{event_id}", response_model=AuditEventDTO)
+async def get_audit_event(
+    event_id: UUID,
+    tenant: TenantContextDep,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AuditEventDTO:
+    repository = AuditEventRepository(session)
+    event = await repository.get(tenant.organization_id, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Audit event not found")
+    return _to_dto(event)

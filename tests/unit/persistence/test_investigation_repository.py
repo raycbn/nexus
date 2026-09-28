@@ -35,10 +35,14 @@ def repo(mock_session: AsyncMock) -> InvestigationPostgresRepository:
 
 @pytest.fixture
 def sample_investigation() -> Investigation:
+    org_id = uuid4()
     inv = Investigation(
         id=uuid4(),
+        organization_id=org_id,
+        workspace_id=uuid4(),
         objective="Test investigation",
         status=InvestigationStatus.COMPLETED,
+        phase="completed",
         started_at=datetime.now(UTC),
         completed_at=datetime.now(UTC),
     )
@@ -83,8 +87,11 @@ def sample_investigation() -> Investigation:
 def sample_model(sample_investigation: Investigation) -> InvestigationModel:
     model = InvestigationModel(
         id=sample_investigation.id,
+        organization_id=sample_investigation.organization_id,
+        workspace_id=sample_investigation.workspace_id,
         objective=sample_investigation.objective,
         status=sample_investigation.status.value,
+        phase=sample_investigation.phase,
         started_at=sample_investigation.started_at,
         completed_at=sample_investigation.completed_at,
     )
@@ -136,7 +143,14 @@ def make_mock_result(scalar_result):
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = scalar_result
     mock_result.scalars.return_value.all.return_value = [scalar_result] if scalar_result else []
-    mock_result.scalar_one.return_value = 5
+    mock_result.scalar_one.return_value = scalar_result
+    return mock_result
+
+
+def make_mock_select_result(scalar_result):
+    """Create a mock result for select queries that returns the model on scalar_one."""
+    mock_result = MagicMock()
+    mock_result.scalar_one.return_value = scalar_result
     return mock_result
 
 
@@ -150,6 +164,7 @@ class TestInvestigationPostgresRepository:
         assert domain.id == sample_model.id
         assert domain.objective == sample_model.objective
         assert domain.status == sample_model.status
+        assert domain.phase == sample_model.phase
         assert domain.started_at == sample_model.started_at
         assert domain.completed_at == sample_model.completed_at
         assert len(domain.evidence) == len(sample_model.evidence)
@@ -167,6 +182,7 @@ class TestInvestigationPostgresRepository:
         assert model.id == sample_investigation.id
         assert model.objective == sample_investigation.objective
         assert model.status == sample_investigation.status.value
+        assert model.phase == sample_investigation.phase
         assert model.started_at == sample_investigation.started_at
         assert model.completed_at == sample_investigation.completed_at
         assert len(model.evidence) == len(sample_investigation.evidence)
@@ -179,9 +195,11 @@ class TestInvestigationPostgresRepository:
         self,
         repo: InvestigationPostgresRepository,
         sample_investigation: Investigation,
+        sample_model: InvestigationModel,
         mock_session: AsyncMock,
     ):
         mock_session.flush = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=make_mock_select_result(sample_model))
 
         result = await repo.create(sample_investigation)
 
@@ -199,7 +217,7 @@ class TestInvestigationPostgresRepository:
     ):
         mock_session.execute = AsyncMock(return_value=make_mock_result(sample_model))
 
-        result = await repo.get(sample_model.id)
+        result = await repo.get(sample_model.id, organization_id=sample_model.organization_id)
 
         assert result is not None
         assert result.id == sample_model.id
@@ -211,7 +229,7 @@ class TestInvestigationPostgresRepository:
     ):
         mock_session.execute = AsyncMock(return_value=make_mock_result(None))
 
-        result = await repo.get(uuid4())
+        result = await repo.get(uuid4(), organization_id=uuid4())
 
         assert result is None
 
@@ -223,10 +241,18 @@ class TestInvestigationPostgresRepository:
         sample_model: InvestigationModel,
         mock_session: AsyncMock,
     ):
-        mock_session.execute = AsyncMock(return_value=make_mock_result(sample_model))
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                make_mock_result(sample_model),  # First execute for get
+                make_mock_select_result(sample_investigation),  # Second execute for reload
+            ]
+        )
         mock_session.flush = AsyncMock()
 
-        result = await repo.update(sample_investigation)
+        result = await repo.update(
+            sample_investigation,
+            organization_id=sample_investigation.organization_id,
+        )
 
         mock_session.flush.assert_awaited_once()
         assert result.id == sample_investigation.id
@@ -241,7 +267,10 @@ class TestInvestigationPostgresRepository:
         mock_session.execute = AsyncMock(return_value=make_mock_result(None))
 
         with pytest.raises(ValueError, match="not found"):
-            await repo.update(sample_investigation)
+            await repo.update(
+                sample_investigation,
+                organization_id=sample_investigation.organization_id,
+            )
 
     @pytest.mark.asyncio
     async def test_delete_found(
@@ -254,7 +283,10 @@ class TestInvestigationPostgresRepository:
         mock_session.flush = AsyncMock()
         mock_session.delete = AsyncMock()
 
-        result = await repo.delete(sample_model.id)
+        result = await repo.delete(
+            sample_model.id,
+            organization_id=sample_model.organization_id,
+        )
 
         assert result is True
         mock_session.delete.assert_called_once_with(sample_model)
@@ -266,7 +298,7 @@ class TestInvestigationPostgresRepository:
     ):
         mock_session.execute = AsyncMock(return_value=make_mock_result(None))
 
-        result = await repo.delete(uuid4())
+        result = await repo.delete(uuid4(), organization_id=uuid4())
 
         assert result is False
 
@@ -275,12 +307,13 @@ class TestInvestigationPostgresRepository:
         self,
         repo: InvestigationPostgresRepository,
         sample_model: InvestigationModel,
+        sample_investigation: Investigation,
         mock_session: AsyncMock,
     ):
         mock_session.execute = AsyncMock(return_value=make_mock_result(sample_model))
 
         results = await repo.list(
-            organization_id=uuid4(),
+            organization_id=sample_investigation.organization_id,
             status=["completed"],
             limit=10,
             offset=0,
@@ -292,10 +325,17 @@ class TestInvestigationPostgresRepository:
         assert results[0].id == sample_model.id
 
     @pytest.mark.asyncio
-    async def test_count(self, repo: InvestigationPostgresRepository, mock_session: AsyncMock):
+    async def test_count(
+        self,
+        repo: InvestigationPostgresRepository,
+        sample_investigation: Investigation,
+        mock_session: AsyncMock,
+    ):
         mock_session.execute = AsyncMock(return_value=make_mock_result(5))
 
-        count = await repo.count(organization_id=uuid4(), status=["completed"])
+        count = await repo.count(
+            organization_id=sample_investigation.organization_id, status=["completed"]
+        )
 
         assert count == 5
 

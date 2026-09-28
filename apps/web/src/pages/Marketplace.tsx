@@ -1,0 +1,11 @@
+import { useEffect, useState } from "react";
+import { Store, ExternalLink } from "lucide-react";
+import { api } from "../api/client";
+
+type Item = { slug: string; name: string; version: string; category: string; description: string; publisher: string; status: string; docs_url: string };
+export function MarketplacePage() {
+  const [items, setItems] = useState<Item[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { void api.getMarketplaceCatalog().then(setItems).catch(e => setError(e instanceof Error ? e.message : "Unable to load marketplace")); }, []);
+  return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-nexus-text">Marketplace</h1><p className="text-nexus-textMuted">NEXUS integrations, SDKs and developer resources.</p></div>{error&&<p role="alert" className="text-red-300">{error}</p>}<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{items.map(item=><article key={item.slug} className="rounded-xl border border-nexus-border bg-nexus-surface p-5"><div className="flex items-center gap-3"><Store className="h-5 w-5 text-nexus-primary"/><div className="flex-1"><h2 className="font-semibold text-nexus-text">{item.name}</h2><p className="text-xs text-nexus-textMuted">{item.category} · v{item.version}</p></div></div><p className="mt-4 text-sm text-nexus-textMuted">{item.description}</p><div className="mt-4 flex items-center justify-between"><span className="text-xs text-nexus-textMuted">{item.publisher} · {item.status}</span><a className="btn-secondary inline-flex items-center gap-2" href={item.docs_url.startsWith("/") ? item.docs_url : "#"} target={item.docs_url.startsWith("http") ? "_blank" : undefined} rel="noreferrer">Docs <ExternalLink className="h-4 w-4"/></a></div></article>)}</div></div>;
+}

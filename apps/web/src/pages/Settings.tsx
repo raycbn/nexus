@@ -1,7 +1,9 @@
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
-import { Server, Cpu, Globe, Shield, AlertTriangle, Info } from 'lucide-react';
+import { Globe, Info, KeyRound, Server, Shield, Users, Workflow } from 'lucide-react';
 import { cn } from '../utils/helpers';
+import { useAuth } from '../auth/AuthProvider';
+import { useAgents, useConnectors, useRemediationSafety, useResources } from '../hooks/useApi';
 
 function ConfigSection({ title, icon: Icon, children }: { title: string; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode }) {
   return (
@@ -19,21 +21,17 @@ function ConfigSection({ title, icon: Icon, children }: { title: string; icon: R
 
 function ConfigRow({ label, value, status, statusLabel }: { label: string; value: string; status?: 'success' | 'warning' | 'danger' | 'info'; statusLabel?: string }) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-nexus-border/50 last:border-0">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-3 border-b border-nexus-border/50 last:border-0">
+      <span className="text-sm font-medium text-nexus-textMuted">{label}</span>
       <div className="flex items-center gap-3">
-        <span className="text-sm font-medium text-nexus-textMuted">{label}</span>
-      </div>
-      <div className="flex items-center gap-3">
-        <code className="text-sm font-mono text-nexus-text bg-nexus-surfaceHover px-3 py-1.5 rounded border border-nexus-border">{value}</code>
+        <code className="text-xs font-mono text-nexus-text bg-nexus-surfaceHover px-2.5 py-1.5 rounded border border-nexus-border break-all">{value}</code>
         {status && statusLabel && (
           <Badge variant="default" className={cn(
-            'bg-green-900/30 text-green-300 border-green-800',
+            status === 'success' && 'bg-green-900/30 text-green-300 border-green-800',
             status === 'warning' && 'bg-yellow-900/30 text-yellow-300 border-yellow-800',
             status === 'danger' && 'bg-red-900/30 text-red-300 border-red-800',
-            status === 'info' && 'bg-blue-900/30 text-blue-300 border-blue-800'
-          )}>
-            {statusLabel}
-          </Badge>
+            status === 'info' && 'bg-blue-900/30 text-blue-300 border-blue-800',
+          )}>{statusLabel}</Badge>
         )}
       </div>
     </div>
@@ -41,89 +39,75 @@ function ConfigRow({ label, value, status, statusLabel }: { label: string; value
 }
 
 export function SettingsPage() {
-  const apiUrl = 'http://localhost:8000';
-  const labUrl = 'http://localhost:8080';
+  const { user, currentWorkspace } = useAuth();
+  const resources = useResources();
+  const agents = useAgents();
+  const connectors = useConnectors();
+  const safety = useRemediationSafety();
+  const environment = import.meta.env.MODE;
+  const apiBase = import.meta.env.VITE_API_BASE || '/api';
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      {/* Header */}
+    <div className="space-y-6 max-w-5xl">
       <div>
         <h1 className="text-2xl font-bold text-nexus-text">Settings</h1>
-        <p className="text-nexus-textMuted">Development configuration and system status</p>
+        <p className="text-nexus-textMuted">Workspace, platform and security configuration.</p>
       </div>
 
-      {/* Environment */}
-      <ConfigSection title="Environment" icon={Globe}>
-        <div className="space-y-3">
-          <ConfigRow label="Environment" value="development" status="info" statusLabel="Development" />
-          <ConfigRow label="API Base URL" value={apiUrl} />
-          <ConfigRow label="Lab Application URL" value={labUrl} />
-        </div>
+      <ConfigSection title="Current workspace" icon={Globe}>
+        <ConfigRow label="Organization" value={user?.organization_id || '—'} />
+        <ConfigRow label="Workspace" value={currentWorkspace?.name || user?.workspace_id || '—'} />
+        <ConfigRow label="Role" value={user?.role || '—'} status="info" statusLabel="Current session" />
+        <ConfigRow label="Frontend environment" value={environment} />
+        <ConfigRow label="API base" value={apiBase} />
+      </ConfigSection>      <div className="grid gap-6 md:grid-cols-2">
+        <ConfigSection title="Platform inventory" icon={Server}>
+          <ConfigRow label="Resources" value={String(resources.data?.total ?? 0)} />
+          <ConfigRow label="Agents" value={String(agents.data?.total ?? 0)} />
+          <ConfigRow label="Connectors" value={String(connectors.data?.length ?? 0)} />
+        </ConfigSection>
+
+        <ConfigSection title="Remediation safety" icon={Shield}>
+          <ConfigRow label="Kill switch" value={safety.data?.kill_switch_enabled ? 'Enabled' : 'Clear'} status={safety.data?.kill_switch_enabled ? 'danger' : 'success'} statusLabel={safety.data?.kill_switch_enabled ? 'Blocked' : 'Ready'} />
+          <ConfigRow label="Writes" value={safety.data?.writes_enabled ? 'Enabled' : 'Disabled'} status={safety.data?.writes_enabled ? 'warning' : 'info'} statusLabel={safety.data?.writes_enabled ? 'Review policy' : 'Safe default'} />
+          <ConfigRow label="Reason" value={safety.data?.reason || 'Loading safety state…'} />
+        </ConfigSection>
+
+        <ConfigSection title="Identity & access" icon={Users}>
+          <ConfigRow label="Authentication" value="JWT access + refresh" status="success" statusLabel="Active" />
+          <ConfigRow label="Authorization" value="Tenant + workspace RBAC" status="success" statusLabel="Enforced" />
+          <ConfigRow label="Current user" value={user?.user_id || '—'} />
+        </ConfigSection>
+
+        <ConfigSection title="Credentials & secrets" icon={KeyRound}>
+          <ConfigRow label="Secret handling" value="Provider references, not secret values" status="success" statusLabel="Secret-safe" />
+          <ConfigRow label="Credential management" value="Use Credentials" status="info" statusLabel="Dedicated UI" />
+          <p className="text-xs text-nexus-textMuted mt-3">Credential rotation, encrypted vault storage and lifecycle controls remain enterprise hardening work; this UI never exposes secret contents.</p>
+        </ConfigSection>
+      </div>      <ConfigSection title="Connector platform" icon={Workflow}>
+        {connectors.isLoading ? (
+          <p className="text-sm text-nexus-textMuted">Loading connector inventory…</p>
+        ) : connectors.error ? (
+          <p className="text-sm text-red-300">{connectors.error.message}</p>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {(connectors.data ?? []).map((connector) => (
+              <div key={connector.key} className="rounded-lg border border-nexus-border bg-nexus-surfaceHover p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium text-nexus-text">{connector.name}</p>
+                  <Badge variant="default">{connector.capabilities.join(' · ')}</Badge>
+                </div>
+                <p className="text-xs text-nexus-textMuted mt-1">{connector.resource_types.join(', ')}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </ConfigSection>
 
-      {/* LLM Configuration */}
-      <ConfigSection title="LLM Configuration" icon={Cpu}>
-        <div className="space-y-3">
-          <ConfigRow label="Provider" value="Ollama" status="success" statusLabel="Connected" />
-          <ConfigRow label="Model" value="llama3.1:8b" />
-          <ConfigRow label="Host" value="http://127.0.0.1:11434" />
-          <ConfigRow label="Context Window" value="8192 tokens" />
-          <ConfigRow label="Timeout" value="120 seconds" />
-        </div>
-      </ConfigSection>
-
-      {/* Lab Infrastructure */}
-      <ConfigSection title="Lab Infrastructure" icon={Server}>
-        <div className="space-y-3">
-          <ConfigRow label="SSH Host" value="localhost" />
-          <ConfigRow label="SSH Port" value="2222" />
-          <ConfigRow label="SSH User" value="nexus" />
-          <ConfigRow label="SSH Key Path" value="infrastructure/lab/ssh_key" status="info" statusLabel="File reference only" />
-          <ConfigRow label="Lab Containers" value="lab-redis, lab-postgres" status="success" statusLabel="Running" />
-        </div>
-      </ConfigSection>
-
-      {/* Application Health */}
-      <ConfigSection title="Application Health" icon={AlertTriangle}>
-        <div className="space-y-3">
-          <ConfigRow label="Health Endpoint" value={`${labUrl}/health`} status="success" statusLabel="Healthy" />
-          <ConfigRow label="Redis Endpoint" value={`${labUrl}/api/redis`} status="success" statusLabel="Connected" />
-          <ConfigRow label="Database Endpoint" value={`${labUrl}/api/db`} status="success" statusLabel="Connected" />
-          <ConfigRow label="Slow Endpoint" value={`${labUrl}/api/slow`} status="warning" statusLabel="Configurable" />
-          <ConfigRow label="Error Endpoint" value={`${labUrl}/api/error`} status="warning" statusLabel="Configurable" />
-        </div>
-      </ConfigSection>
-
-      {/* Fault Injection */}
-      <ConfigSection title="Fault Injection (Lab Only)" icon={AlertTriangle}>
-        <div className="space-y-3">
-          <ConfigRow label="API Latency" value="Available" status="info" statusLabel="Via /api/slow" />
-          <ConfigRow label="API Failure" value="Available" status="info" statusLabel="Via /api/error" />
-          <ConfigRow label="Redis Unavailable" value="Available" status="info" statusLabel="Pause lab-redis" />
-          <ConfigRow label="Postgres Unavailable" value="Available" status="info" statusLabel="Pause lab-postgres" />
-        </div>
-      </ConfigSection>
-
-      {/* Security */}
-      <ConfigSection title="Security" icon={Shield}>
-        <div className="space-y-3">
-          <ConfigRow label="Authentication" value="Not implemented" status="warning" statusLabel="Development only" />
-          <ConfigRow label="Authorization" value="Policy-based" status="success" statusLabel="PolicyEvaluator active" />
-          <ConfigRow label="Secrets Management" value="File references only" status="info" statusLabel="No secrets in code" />
-          <ConfigRow label="SSH Keys" value="Referenced by path" status="success" statusLabel="Keys not in repo" />
-        </div>
-      </ConfigSection>
-
-      {/* Versions */}
-      <ConfigSection title="Versions" icon={Info}>
-        <div className="space-y-3">
-          <ConfigRow label="NEXUS Platform" value="0.1.0" />
-          <ConfigRow label="Python" value="3.12+" />
-          <ConfigRow label="FastAPI" value="0.111+" />
-          <ConfigRow label="React" value="18.2+" />
-          <ConfigRow label="TypeScript" value="5.3+" />
-          <ConfigRow label="Tailwind CSS" value="3.4+" />
-        </div>
+      <ConfigSection title="Product information" icon={Info}>
+        <ConfigRow label="Platform" value="NEXUS AI Operations Platform" />
+        <ConfigRow label="Operational model" value="Evidence → Policy → Controlled Action → Verification → Audit" />
+        <ConfigRow label="Commercial posture" value="Multi-tenant, workspace-scoped, connector-driven" status="info" statusLabel="Current architecture" />
       </ConfigSection>
     </div>
   );

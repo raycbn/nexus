@@ -1,0 +1,58 @@
+services:
+  nexus-lab-web-01:
+    build: .
+    container_name: nexus-lab-web-01
+    hostname: nexus-lab-web-01
+    privileged: true
+    cgroup: host
+    command: ["/sbin/init"]
+    ports:
+      - "2223:22"
+      - "8081:80"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /run/lock
+    networks: [nexus-scenarios]
+
+  nexus-lab-app-02:
+    build: .
+    container_name: nexus-lab-app-02
+    hostname: nexus-lab-app-02
+    privileged: true
+    cgroup: host
+    command: ["/sbin/init"]
+    ports:
+      - "2224:22"
+      - "8082:80"
+      - "9091:9090"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /run/lock
+    networks: [nexus-scenarios]
+
+  nexus-lab-win-sim-03:
+    build: .
+    container_name: nexus-lab-win-sim-03
+    hostname: nexus-lab-win-sim-03
+    privileged: true
+    cgroup: host
+    command: ["/sbin/init"]
+    ports:
+      - "2225:22"
+      - "8083:80"
+      - "4451:445"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /run/lock
+    networks: [nexus-scenarios]
+
+networks:
+  nexus-scenarios:
+    name: nexus-scenarios
+    driver: bridge

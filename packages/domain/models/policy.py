@@ -14,4 +14,5 @@ class Policy(NexusBaseModel):
     denied_tool_ids: list[str] = Field(default_factory=list)
     approval_required_tool_ids: list[str] = Field(default_factory=list)
     max_risk_level: RiskLevel = RiskLevel.MEDIUM
+    allow_autonomous_high_risk: bool = False
     allowed_resource_ids: list[UUID] = Field(default_factory=list)

@@ -50,13 +50,14 @@ class OllamaMessageAdapter:
     def _sanitize_content(content: str) -> str:
         import re
 
-        thinking_pattern = re.compile(r"<\|thinking_start\|>.*?<\|thinking_end\|>", re.DOTALL)
+        thinking_pattern = re.compile(
+            r"<\|thinking_start\|>.*?<\|thinking_end\|>", re.DOTALL
+        )
         content = thinking_pattern.sub("", content)
 
-        # Use regex to find end-think markers flexibly
-        # Pattern matches: END + optional ZWSP + THINK, or <|end_think|>, or TODO
-        # Note: \u200b in regular string = ZWSP character (U+200B)
-        end_think_pattern = re.compile(r"(?:END\u200b?THINK|<\|end_think_\|>|TODO)")
+        end_think_pattern = re.compile(
+            r"(?:END\u200b?THINK|<\|end_think_\|>|TODO)"
+        )
         match = end_think_pattern.search(content)
         if match:
             return content[match.end() :].strip()

@@ -1,4 +1,4 @@
 from .connector import Connector
-from .models import DiscoverResult, HealthStatus, ReadResult
+from .models import ConnectorCapabilities, DiscoverResult, HealthStatus, ReadResult
 
-__all__ = ["Connector", "DiscoverResult", "HealthStatus", "ReadResult"]
+__all__ = ["Connector", "ConnectorCapabilities", "DiscoverResult", "HealthStatus", "ReadResult"]

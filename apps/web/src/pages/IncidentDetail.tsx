@@ -1,4 +1,4 @@
-import { useIncident, useIncidentTimeline } from '../hooks/useApi';
+import { useIncident, useIncidentTimeline, useResources, useTransitionIncidentStatus, useUpdateIncidentSeverity, useResolveIncident, useCloseIncident } from '../hooks/useApi';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { LoadingOverlay } from '../components/Loading';
@@ -8,6 +8,8 @@ import { cn } from '../utils/helpers';
 import { AlertTriangle, Clock, FileText, CheckCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import type { IncidentDetailDTO } from '../types';
+import { useAuth } from '../auth/AuthProvider';
 
 interface TimelineEntry {
   id: string;
@@ -106,7 +108,7 @@ function TimelineItem({ entry, index, total }: { entry: TimelineEntry; index: nu
   );
 }
 
-function InvestigationSection({ incident }: { incident: any }) {
+function InvestigationSection({ incident }: { incident: IncidentDetailDTO }) {
   const [expanded, setExpanded] = useState(true);
 
   if (!incident.investigation_id) {
@@ -213,7 +215,7 @@ function TimelineSection({ incidentId }: { incidentId: string }) {
   );
 }
 
-function AuditSection({ incident }: { incident: any }) {
+function AuditSection({ incident }: { incident: IncidentDetailDTO }) {
   if (!incident.audit_event_ids || incident.audit_event_ids.length === 0) {
     return null;
   }
@@ -238,6 +240,12 @@ function AuditSection({ incident }: { incident: any }) {
 export function IncidentDetailPage() {
   const { incidentId } = useParams<{ incidentId: string }>();
   const { data: incident, isLoading, error, refetch } = useIncident(incidentId!);
+  const { data: resourcesData } = useResources();
+  const { user } = useAuth();
+  const transitionStatus = useTransitionIncidentStatus();
+  const updateSeverity = useUpdateIncidentSeverity();
+  const resolveIncident = useResolveIncident();
+  const closeIncident = useCloseIncident();
 
   if (isLoading) {
     return (
@@ -264,6 +272,8 @@ export function IncidentDetailPage() {
     return classes[status] || '';
   };
 
+  const resourceNames = new Map((resourcesData?.resources || []).map((resource) => [resource.id, resource.name]));
+
   const getSeverityClass = (severity: string) => {
     const classes: Record<string, string> = {
       low: 'bg-slate-900/30 text-slate-300 border-slate-700',
@@ -273,6 +283,9 @@ export function IncidentDetailPage() {
     };
     return classes[severity] || '';
   };
+
+  const canOperate = user?.role === 'admin' || user?.role === 'operator';
+  const operationalBusy = transitionStatus.isPending || updateSeverity.isPending || resolveIncident.isPending || closeIncident.isPending;
 
   return (
     <div className="space-y-6">
@@ -290,9 +303,50 @@ export function IncidentDetailPage() {
           </div>
           <h1 className="text-2xl font-bold text-nexus-text">{incident.title}</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-nexus-textMuted">Created</span>
-          <span className="text-sm font-mono text-nexus-text">{formatDate(incident.created_at)}</span>
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+          <span className="text-sm text-nexus-textMuted">Created {formatDate(incident.created_at)}</span>
+          {canOperate && !['resolved', 'closed'].includes(incident.status) && (
+            <>
+              <select
+                aria-label="Incident status"
+                value={incident.status}
+                disabled={operationalBusy}
+                onChange={(event) => void transitionStatus.mutateAsync({ id: incident.id, status: event.target.value })}
+                className="rounded-lg border border-nexus-border bg-nexus-surface px-3 py-2 text-sm text-nexus-text"
+              >
+                {['detected', 'investigating', 'identified', 'monitoring'].map((status) => (
+                  <option key={status} value={status}>{status.replace('_', ' ')}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Incident severity"
+                value={incident.severity}
+                disabled={operationalBusy}
+                onChange={(event) => void updateSeverity.mutateAsync({ id: incident.id, severity: event.target.value })}
+                className="rounded-lg border border-nexus-border bg-nexus-surface px-3 py-2 text-sm text-nexus-text"
+              >
+                {['low', 'medium', 'high', 'critical'].map((severity) => (
+                  <option key={severity} value={severity}>{severity}</option>
+                ))}
+              </select>
+              <button
+                disabled={operationalBusy}
+                onClick={() => void resolveIncident.mutateAsync(incident.id)}
+                className="rounded-lg bg-nexus-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                Resolve
+              </button>
+            </>
+          )}
+          {canOperate && incident.status === 'resolved' && (
+            <button
+              disabled={operationalBusy}
+              onClick={() => void closeIncident.mutateAsync(incident.id)}
+              className="rounded-lg border border-nexus-border px-3 py-2 text-sm text-nexus-text disabled:opacity-50"
+            >
+              Close incident
+            </button>
+          )}
         </div>
       </div>
 
@@ -343,6 +397,20 @@ export function IncidentDetailPage() {
           </dl>
         </Card>
       </div>
+
+      {/* Affected Resources */}
+      {incident.affected_resource_ids.length > 0 && (
+        <Card>
+          <h3 className="text-lg font-semibold text-nexus-text mb-4">Affected Resources</h3>
+          <div className="flex flex-wrap gap-2">
+            {incident.affected_resource_ids.map((resourceId: string) => (
+              <span key={resourceId} className="px-3 py-1.5 rounded-lg border border-nexus-border bg-nexus-surfaceHover text-sm text-nexus-text">
+                {resourceNames.get(resourceId) || resourceId.slice(0, 12)}
+              </span>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

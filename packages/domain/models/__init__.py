@@ -1,6 +1,7 @@
 from packages.domain.models.agent import Agent
 from packages.domain.models.audit_event import AuditEvent
 from packages.domain.models.connector import Connector
+from packages.domain.models.context import TenantContext
 from packages.domain.models.enums import (
     ActorType,
     AutonomyLevel,
@@ -12,6 +13,7 @@ from packages.domain.models.enums import (
     Severity,
     SourceType,
 )
+from packages.domain.models.identity import AuthenticatedPrincipal
 from packages.domain.models.incident import (
     Incident,
     IncidentTimelineEntry,
@@ -20,6 +22,7 @@ from packages.domain.models.incident import (
 from packages.domain.models.knowledge_source import KnowledgeSource
 from packages.domain.models.organization import Organization
 from packages.domain.models.policy import Policy
+from packages.domain.models.remediation import RemediationAction, RemediationStatus
 from packages.domain.models.resource import Resource
 from packages.domain.models.tool import Tool
 from packages.domain.models.user import User
@@ -29,6 +32,7 @@ __all__ = [
     "ActorType",
     "Agent",
     "AuditEvent",
+    "AuthenticatedPrincipal",
     "AutonomyLevel",
     "Connector",
     "EventType",
@@ -38,12 +42,15 @@ __all__ = [
     "KnowledgeSource",
     "Organization",
     "Policy",
+    "RemediationAction",
+    "RemediationStatus",
     "Resource",
     "ResourceType",
     "ResultStatus",
     "RiskLevel",
     "Severity",
     "SourceType",
+    "TenantContext",
     "TimelineEventType",
     "Tool",
     "User",

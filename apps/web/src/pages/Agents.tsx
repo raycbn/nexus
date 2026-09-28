@@ -1,4 +1,4 @@
-import { useAgents } from '../hooks/useApi';
+import { useAgent, useAgents } from '../hooks/useApi';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { LoadingOverlay } from '../components/Loading';
@@ -7,8 +7,9 @@ import { formatDate } from '../utils/helpers';
 import { Bot, Shield, Settings, ExternalLink } from 'lucide-react';
 import { cn } from '../utils/helpers';
 import { useParams } from 'react-router-dom';
+import type { AgentSummaryDTO } from '../types';
 
-function AgentCard({ agent }: { agent: any }) {
+function AgentCard({ agent }: { agent: AgentSummaryDTO }) {
   const getAutonomyBadge = (level: string) => {
     const badges: Record<string, { className: string; label: string }> = {
       read_only: { className: 'bg-blue-900/30 text-blue-300 border-blue-800', label: 'Read Only' },
@@ -57,7 +58,7 @@ function AgentCard({ agent }: { agent: any }) {
   );
 }
 
-function AgentDetail({ agent }: { agent: any }) {
+function AgentDetail({ agent }: { agent: AgentSummaryDTO }) {
   const getAutonomyBadge = (level: string) => {
     const badges: Record<string, { className: string; label: string }> = {
       read_only: { className: 'bg-blue-900/30 text-blue-300 border-blue-800', label: 'Read Only' },
@@ -158,6 +159,7 @@ function AgentDetail({ agent }: { agent: any }) {
 export function AgentsPage() {
   const { agentId } = useParams<{ agentId?: string }>();
   const { data, isLoading, error } = useAgents();
+  const detailQuery = useAgent(agentId || '');
 
   if (isLoading) {
     return (
@@ -177,11 +179,10 @@ export function AgentsPage() {
   const agents = data?.agents || [];
 
   if (agentId) {
-    const agent = agents.find(a => a.id === agentId);
-    if (!agent) {
-      return <ErrorState message="Agent not found" />;
-    }
-    return <AgentDetail agent={agent} />;
+    if (detailQuery.isLoading) return <LoadingOverlay message="Loading agent..." />;
+    if (detailQuery.error) return <ErrorState message={detailQuery.error.message} onRetry={() => detailQuery.refetch()} />;
+    if (!detailQuery.data) return <ErrorState message="Agent not found" />;
+    return <AgentDetail agent={detailQuery.data} />;
   }
 
   return (

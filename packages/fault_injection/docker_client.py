@@ -16,6 +16,14 @@ class DockerCommandResult:
     returncode: int
 
 
+def _decode_output(value: bytes | str | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return value
+
+
 def _run_docker_cmd(args: list[str], timeout: int = 30) -> DockerCommandResult:
     cmd = ["docker", *args]
     try:

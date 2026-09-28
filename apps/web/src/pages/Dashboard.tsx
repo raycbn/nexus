@@ -1,4 +1,4 @@
-import { useIncidents, useResources, useAgents, useAuditEvents } from '../hooks/useApi';
+import { useIncidents, useResources, useAgents } from '../hooks/useApi';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { LoadingOverlay, TableSkeleton } from '../components/Loading';
@@ -12,6 +12,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { cn } from '../utils/helpers';
+import type { AgentSummaryDTO, IncidentSummaryDTO, ResourceSummaryDTO } from '../types';
 
 const statusColors = {
   detected: 'text-blue-400',
@@ -50,10 +51,11 @@ function StatCard({ title, value, icon: Icon, trend, color }: {
   );
 }
 
-function RecentIncidentsTable({ incidents, loading, error }: {
-  incidents: any[];
+function RecentIncidentsTable({ incidents, loading, error, resourceNames }: {
+  incidents: IncidentSummaryDTO[];
   loading: boolean;
   error: Error | null;
+  resourceNames: Map<string, string>;
 }) {
   if (loading) return <TableSkeleton rows={5} cols={6} />;
   if (error) return <ErrorState message={error.message} />;
@@ -97,7 +99,7 @@ function RecentIncidentsTable({ incidents, loading, error }: {
                 </Badge>
               </td>
               <td className="text-nexus-textMuted">
-                {incident.affected_resource_ids[0] ? incident.affected_resource_ids[0].slice(0, 8) : '—'}
+                {incident.affected_resource_ids[0] ? (resourceNames.get(incident.affected_resource_ids[0]) || incident.affected_resource_ids[0].slice(0, 8)) : '—'}
               </td>
               <td className="text-right text-nexus-textMuted text-sm">
                 {formatRelativeTime(incident.updated_at)}
@@ -110,10 +112,10 @@ function RecentIncidentsTable({ incidents, loading, error }: {
   );
 }
 
-function SystemStatusCard({ resources, agents }: { resources: any[]; agents: any[] }) {
+function SystemStatusCard({ resources, agents }: { resources: ResourceSummaryDTO[]; agents: AgentSummaryDTO[] }) {
   return (
     <Card>
-      <h3 className="text-lg font-semibold text-nexus-text mb-4">System Status</h3>
+      <h3 className="text-lg font-semibold text-nexus-text mb-4">Inventory Status</h3>
       <div className="space-y-4">
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -124,10 +126,10 @@ function SystemStatusCard({ resources, agents }: { resources: any[]; agents: any
             {resources.map((resource) => (
               <div key={resource.id} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="w-2 h-2 rounded-full bg-nexus-success" />
+                  <span className={cn('w-2 h-2 rounded-full', resource.enabled ? 'bg-nexus-success' : 'bg-nexus-textMuted')} />
                   <span className="text-sm text-nexus-text">{resource.name}</span>
                 </div>
-                <span className="text-xs text-nexus-textMuted">{resource.resource_type}</span>
+                <span className="text-xs text-nexus-textMuted">{resource.enabled ? 'Configured' : 'Disabled'}</span>
               </div>
             ))}
           </div>
@@ -135,16 +137,16 @@ function SystemStatusCard({ resources, agents }: { resources: any[]; agents: any
         <div className="pt-4 border-t border-nexus-border">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-nexus-text">Agents</span>
-            <span className="text-sm text-nexus-textMuted">{agents.length} active</span>
+            <span className="text-sm text-nexus-textMuted">{agents.length} configured</span>
           </div>
           <div className="space-y-2">
             {agents.map((agent) => (
               <div key={agent.id} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="w-2 h-2 rounded-full bg-nexus-success" />
+                  <span className={cn('w-2 h-2 rounded-full', agent.enabled ? 'bg-nexus-success' : 'bg-nexus-textMuted')} />
                   <span className="text-sm text-nexus-text">{agent.name}</span>
                 </div>
-                <span className="text-xs text-nexus-textMuted">{agent.role}</span>
+                <span className="text-xs text-nexus-textMuted">{agent.enabled ? agent.role : 'Disabled'}</span>
               </div>
             ))}
           </div>
@@ -155,17 +157,17 @@ function SystemStatusCard({ resources, agents }: { resources: any[]; agents: any
 }
 
 export function Dashboard() {
-  const { data: incidentsData, isLoading: incidentsLoading, error: incidentsError } = useIncidents({ limit: 5 });
+  const recentIncidents = useIncidents({ limit: 5 });
+  const activeIncidents = useIncidents({ status: ['detected', 'investigating', 'identified', 'monitoring'], limit: 1 });
+  const criticalIncidents = useIncidents({ severity: ['critical'], limit: 1 });
   const { data: resourcesData, isLoading: resourcesLoading } = useResources();
   const { data: agentsData, isLoading: agentsLoading } = useAgents();
-  const { isLoading: auditLoading } = useAuditEvents({ limit: 10 });
 
-  const loading = incidentsLoading || resourcesLoading || agentsLoading || auditLoading;
+  const loading = recentIncidents.isLoading || activeIncidents.isLoading || criticalIncidents.isLoading || resourcesLoading || agentsLoading;
 
-  const activeIncidents = incidentsData?.incidents.filter(i => i.status !== 'resolved' && i.status !== 'closed') || [];
-  const criticalIncidents = incidentsData?.incidents.filter(i => i.severity === 'critical') || [];
   const totalResources = resourcesData?.total || 0;
   const totalAgents = agentsData?.total || 0;
+  const resourceNames = new Map((resourcesData?.resources || []).map((resource) => [resource.id, resource.name]));
 
   if (loading) {
     return (
@@ -193,13 +195,13 @@ export function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Active Incidents"
-          value={activeIncidents.length}
+          value={activeIncidents.data?.total || 0}
           icon={AlertTriangle}
           color="bg-blue-900/30 text-blue-400"
         />
         <StatCard
           title="Critical"
-          value={criticalIncidents.length}
+          value={criticalIncidents.data?.total || 0}
           icon={XCircle}
           color="bg-red-900/30 text-red-400"
         />
@@ -226,9 +228,10 @@ export function Dashboard() {
               <h3 className="text-lg font-semibold text-nexus-text">Recent Incidents</h3>
             </div>
             <RecentIncidentsTable
-              incidents={incidentsData?.incidents || []}
-              loading={incidentsLoading}
-              error={incidentsError}
+              incidents={recentIncidents.data?.incidents || []}
+              loading={recentIncidents.isLoading}
+              error={recentIncidents.error}
+              resourceNames={resourceNames}
             />
           </Card>
         </div>

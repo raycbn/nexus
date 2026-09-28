@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+﻿FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -31,6 +31,8 @@ RUN echo 'PermitRootLogin no' >> /etc/ssh/sshd_config && \
 
 COPY linux-lab/ssh/sshd_config /etc/ssh/sshd_config
 
+RUN chmod 600 /etc/ssh/ssh_host_*_key
+
 RUN chown root:root /etc/ssh/sshd_config && \
     chmod 644 /etc/ssh/sshd_config
 
@@ -56,3 +58,7 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=15s \
     CMD curl -f http://localhost/health || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
+
+
+
+

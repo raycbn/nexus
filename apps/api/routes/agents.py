@@ -1,34 +1,17 @@
-from typing import Any
-from uuid import UUID, uuid4
+from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
-from packages.domain.models.agent import Agent
-from packages.domain.models.enums import AutonomyLevel
+from fastapi import APIRouter, Depends, HTTPException
+from packages.auth import get_tenant_context
+from packages.domain.models.context import TenantContext
+from packages.persistence.repositories.core import CoreRepository
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from apps.api.dependencies import get_db_session
 
 router = APIRouter(prefix="/agents", tags=["agents"])
-
-
-# In-memory store for development
-_agents: dict[UUID, Agent] = {}
-
-
-def _init_agents() -> None:
-    global _agents
-    if not _agents:
-        agent = Agent(
-            organization_id=uuid4(),
-            workspace_id=None,
-            name="Linux Investigator",
-            role="investigator",
-            description="Investigates Linux system issues",
-            system_instructions="You are an expert Linux system investigator.",
-            enabled=True,
-            autonomy_level=AutonomyLevel.READ_ONLY,
-            allowed_tool_ids=[],
-            policy_id=None,
-        )
-        _agents[agent.id] = agent
+TenantContextDep = Annotated[TenantContext, Depends(get_tenant_context)]
 
 
 class AgentSummaryDTO(BaseModel):
@@ -39,10 +22,10 @@ class AgentSummaryDTO(BaseModel):
     system_instructions: str
     enabled: bool
     autonomy_level: str
-    allowed_tool_ids: list[UUID]
+    allowed_tool_ids: list[str]
     policy_id: UUID | None = None
-    created_at: Any
-    updated_at: Any
+    created_at: object
+    updated_at: object
 
 
 class AgentListResponseDTO(BaseModel):
@@ -50,37 +33,7 @@ class AgentListResponseDTO(BaseModel):
     total: int
 
 
-@router.get("", response_model=AgentListResponseDTO)
-async def list_agents() -> AgentListResponseDTO:
-    _init_agents()
-    agents = list(_agents.values())
-    return AgentListResponseDTO(
-        agents=[
-            AgentSummaryDTO(
-                id=a.id,
-                name=a.name,
-                role=a.role,
-                description=a.description,
-                system_instructions=a.system_instructions,
-                enabled=a.enabled,
-                autonomy_level=a.autonomy_level.value,
-                allowed_tool_ids=a.allowed_tool_ids,
-                policy_id=a.policy_id,
-                created_at=a.created_at,
-                updated_at=a.updated_at,
-            )
-            for a in agents
-        ],
-        total=len(agents),
-    )
-
-
-@router.get("/{agent_id}", response_model=AgentSummaryDTO)
-async def get_agent(agent_id: UUID) -> AgentSummaryDTO:
-    _init_agents()
-    agent = _agents.get(agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+def _to_dto(agent) -> AgentSummaryDTO:
     return AgentSummaryDTO(
         id=agent.id,
         name=agent.name,
@@ -89,8 +42,34 @@ async def get_agent(agent_id: UUID) -> AgentSummaryDTO:
         system_instructions=agent.system_instructions,
         enabled=agent.enabled,
         autonomy_level=agent.autonomy_level.value,
-        allowed_tool_ids=agent.allowed_tool_ids,
+        allowed_tool_ids=[str(value) for value in agent.allowed_tool_ids],
         policy_id=agent.policy_id,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
     )
+
+
+@router.get("", response_model=AgentListResponseDTO)
+async def list_agents(
+    tenant: TenantContextDep,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AgentListResponseDTO:
+    repository = CoreRepository(session)
+    agents = await repository.list_agents(tenant.organization_id, tenant.workspace_id)
+    return AgentListResponseDTO(
+        agents=[_to_dto(agent) for agent in agents],
+        total=len(agents),
+    )
+
+
+@router.get("/{agent_id}", response_model=AgentSummaryDTO)
+async def get_agent(
+    agent_id: UUID,
+    tenant: TenantContextDep,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AgentSummaryDTO:
+    repository = CoreRepository(session)
+    agent = await repository.get_agent(tenant.organization_id, agent_id, tenant.workspace_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return _to_dto(agent)

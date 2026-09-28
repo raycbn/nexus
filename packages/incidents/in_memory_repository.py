@@ -13,16 +13,50 @@ class InMemoryIncidentRepository(IncidentRepository):
         self._incidents[incident.id] = incident
         return incident
 
-    async def get(self, incident_id: UUID) -> Incident | None:
-        return self._incidents.get(incident_id)
+    async def get(
+        self,
+        incident_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> Incident | None:
+        incident = self._incidents.get(incident_id)
+        if (
+            incident is None
+            or incident.organization_id != organization_id
+            or (workspace_id is not None and incident.workspace_id != workspace_id)
+        ):
+            return None
+        return incident
 
-    async def update(self, incident: Incident) -> Incident:
-        if incident.id not in self._incidents:
+    async def update(
+        self,
+        incident: Incident,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> Incident:
+        stored = self._incidents.get(incident.id)
+        if stored is None or stored.organization_id != organization_id:
+            raise ValueError(f"Incident {incident.id} not found")
+        if workspace_id is not None and stored.workspace_id != workspace_id:
             raise ValueError(f"Incident {incident.id} not found")
         self._incidents[incident.id] = incident
         return incident
 
-    async def delete(self, incident_id: UUID) -> bool:
+    async def delete(
+        self,
+        incident_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> bool:
+        incident = self._incidents.get(incident_id)
+        if incident is not None and incident.organization_id != organization_id:
+            return False
+        if (
+            incident is not None
+            and workspace_id is not None
+            and incident.workspace_id != workspace_id
+        ):
+            return False
         if incident_id in self._incidents:
             del self._incidents[incident_id]
             return True
@@ -112,11 +146,31 @@ class InMemoryIncidentRepository(IncidentRepository):
 
         return len(incidents)
 
-    async def get_by_resource(self, resource_id: UUID) -> builtins.list[Incident]:
-        return [inc for inc in self._incidents.values() if resource_id in inc.affected_resource_ids]
+    async def get_by_resource(
+        self,
+        resource_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> builtins.list[Incident]:
+        return [
+            inc
+            for inc in self._incidents.values()
+            if resource_id in inc.affected_resource_ids
+            and inc.organization_id == organization_id
+            and (workspace_id is None or inc.workspace_id == workspace_id)
+        ]
 
-    async def get_by_investigation(self, investigation_id: UUID) -> Incident | None:
+    async def get_by_investigation(
+        self,
+        investigation_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> Incident | None:
         for inc in self._incidents.values():
-            if inc.investigation_id == investigation_id:
+            if (
+                inc.investigation_id == investigation_id
+                and inc.organization_id == organization_id
+                and (workspace_id is None or inc.workspace_id == workspace_id)
+            ):
                 return inc
         return None

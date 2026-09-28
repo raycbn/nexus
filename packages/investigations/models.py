@@ -24,6 +24,14 @@ class HypothesisStatus(StrEnum):
     UNRESOLVED = "unresolved"
 
 
+class InvestigationEvent(NexusBaseModel):
+    investigation_id: UUID
+    event_type: str
+    phase: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class Evidence(NexusBaseModel):
     source_tool: str
     resource_id: UUID | None = None
@@ -45,6 +53,7 @@ class Validation(NexusBaseModel):
     expected_condition: str
     actual_result: dict[str, Any] | str | None = None
     passed: bool | None = None
+    evidence_ids: list[UUID] = Field(default_factory=list)
 
 
 class Conclusion(NexusBaseModel):
@@ -55,8 +64,11 @@ class Conclusion(NexusBaseModel):
 
 
 class Investigation(NexusBaseModel):
+    organization_id: UUID
+    workspace_id: UUID | None = None
     objective: str
     status: InvestigationStatus = InvestigationStatus.STARTED
+    phase: str = "collection"
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     completed_at: datetime | None = None
     evidence: list[Evidence] = Field(default_factory=list)

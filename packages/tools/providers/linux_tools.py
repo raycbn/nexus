@@ -19,6 +19,9 @@ class LinuxBaseTool(Tool):
     def get_resource_id(self) -> str | None:
         return str(self._resource.id)
 
+    def get_connector_capabilities(self):
+        return self._connector.capabilities
+
     def get_required_permissions(self) -> list[str]:
         return ["read"]
 
@@ -431,24 +434,26 @@ class GetServiceStatusTool(LinuxBaseTool):
         return "Get Service Status"
 
     def get_description(self) -> str:
-        return "Checks status of known lab services via process/listening checks"
+        return "Checks SSH and the service declared by the target resource"
 
     def get_input_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-        }
+        return {"type": "object", "properties": {}, "additionalProperties": False}
 
     def get_output_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
                 "sshd": {"type": "string"},
-                "nginx": {"type": "string"},
-                "python_api": {"type": "string"},
+                "service": {"type": "string"},
+                "service_status": {"type": "string"},
             },
         }
+
+    async def _check_process(self, name: str) -> bool:
+        result = await self._execute_command(
+            f"pgrep -x -- {name} 2>/dev/null || ps -eo comm | grep -w -- {name}"
+        )
+        return bool(result.strip())
 
     async def _check_port(self, port: int) -> bool:
         result = await self._execute_command(
@@ -456,24 +461,28 @@ class GetServiceStatusTool(LinuxBaseTool):
         )
         return bool(result.strip())
 
-    async def _check_process(self, name: str) -> bool:
-        result = await self._execute_command(
-            f"pgrep -x {name} 2>/dev/null || ps -eo comm | grep -w {name}"
-        )
-        return bool(result.strip())
-
     async def execute(self, parameters: dict[str, Any]) -> dict[str, Any]:
-        sshd_status = "running" if await self._check_process("sshd") else "stopped"
-        nginx_status = "running" if await self._check_process("nginx") else "stopped"
-        if nginx_status == "stopped" and await self._check_port(80):
-            nginx_status = "running"
-        api_status = "running" if await self._check_process("python3") else "stopped"
-        if api_status == "stopped" and await self._check_port(5000):
-            api_status = "running"
+        service = self._resource.labels.get("service_name") or self._resource.labels.get(
+            "service", ""
+        )
+        service_port = self._resource.labels.get("service_port") or self._resource.labels.get(
+            "port"
+        )
+        running = await self._check_process("sshd")
+        service_running = bool(service) and await self._check_process(service)
+        if not service_running and service_port:
+            try:
+                service_running = await self._check_port(int(service_port))
+            except ValueError:
+                service_running = False
+        service_status = "running" if service_running else "stopped"
         return {
             "resource_id": str(self._resource.id),
             "mode": "real",
-            "sshd": sshd_status,
-            "nginx": nginx_status,
-            "python_api": api_status,
+            "sshd": "running" if running else "stopped",
+            "service": service,
+            "service_status": service_status,
+            "nginx": service_status if service == "nginx" else "unknown",
+            "python_api": service_status if service in {"python3", "nexus-demo"} else "unknown",
         }
+

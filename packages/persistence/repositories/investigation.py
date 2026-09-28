@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 from uuid import UUID
 
 from packages.investigations.models import (
@@ -9,6 +10,7 @@ from packages.investigations.models import (
     Hypothesis,
     HypothesisStatus,
     Investigation,
+    InvestigationEvent,
     InvestigationStatus,
     Validation,
 )
@@ -17,11 +19,13 @@ from packages.persistence.models.investigation import (
     ConclusionModel,
     EvidenceModel,
     HypothesisModel,
+    InvestigationEventModel,
     InvestigationModel,
     ValidationModel,
 )
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 
 def _uuids_to_strings(uuids: Sequence[UUID]) -> list[str]:
@@ -39,8 +43,11 @@ class InvestigationPostgresRepository(InvestigationRepository):
     def _to_domain(self, model: InvestigationModel) -> Investigation:
         investigation = Investigation(
             id=model.id,
+            organization_id=model.organization_id,
+            workspace_id=model.workspace_id,
             objective=model.objective,
             status=InvestigationStatus(model.status),
+            phase=model.phase,
             started_at=model.started_at,
             completed_at=model.completed_at,
         )
@@ -100,8 +107,11 @@ class InvestigationPostgresRepository(InvestigationRepository):
     def _to_model(self, investigation: Investigation) -> InvestigationModel:
         model = InvestigationModel(
             id=investigation.id,
+            organization_id=investigation.organization_id,
+            workspace_id=investigation.workspace_id,
             objective=investigation.objective,
-            status=investigation.status.value,
+            status=investigation.status,
+            phase=investigation.phase,
             started_at=investigation.started_at,
             completed_at=investigation.completed_at,
         )
@@ -128,7 +138,7 @@ class InvestigationPostgresRepository(InvestigationRepository):
                     text=h.text,
                     supporting_evidence_ids=_uuids_to_strings(h.supporting_evidence_ids),
                     contradicting_evidence_ids=_uuids_to_strings(h.contradicting_evidence_ids),
-                    status=h.status.value,
+                    status=h.status,
                 )
             )
 
@@ -150,7 +160,9 @@ class InvestigationPostgresRepository(InvestigationRepository):
                 id=investigation.conclusion.id,
                 finding=investigation.conclusion.finding,
                 confidence=investigation.conclusion.confidence,
-                supporting_evidence_ids=_uuids_to_strings(investigation.conclusion.supporting_evidence_ids),
+                supporting_evidence_ids=_uuids_to_strings(
+                    investigation.conclusion.supporting_evidence_ids
+                ),
                 unresolved_uncertainty=investigation.conclusion.unresolved_uncertainty,
             )
 
@@ -160,18 +172,69 @@ class InvestigationPostgresRepository(InvestigationRepository):
         model = self._to_model(investigation)
         self._session.add(model)
         await self._session.flush()
-        return self._to_domain(model)
+        # Refresh with relationships loaded to avoid lazy loading
+        stmt = (
+            select(InvestigationModel)
+            .where(InvestigationModel.id == model.id)
+            .options(
+                selectinload(InvestigationModel.evidence),
+                selectinload(InvestigationModel.hypotheses),
+                selectinload(InvestigationModel.validations),
+                selectinload(InvestigationModel.conclusion),
+            )
+        )
+        result = await self._session.execute(stmt)
+        loaded_model = result.scalar_one()
+        return self._to_domain(loaded_model)
 
-    async def get(self, investigation_id: UUID) -> Investigation | None:
-        stmt = select(InvestigationModel).where(InvestigationModel.id == investigation_id)
+    async def get(
+        self,
+        investigation_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> Investigation | None:
+        stmt = (
+            select(InvestigationModel)
+            .where(
+                InvestigationModel.id == investigation_id,
+                InvestigationModel.organization_id == organization_id,
+            )
+            .options(
+                selectinload(InvestigationModel.evidence),
+                selectinload(InvestigationModel.hypotheses),
+                selectinload(InvestigationModel.validations),
+                selectinload(InvestigationModel.conclusion),
+            )
+        )
+        if workspace_id is not None:
+            stmt = stmt.where(InvestigationModel.workspace_id == workspace_id)
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
         if model is None:
             return None
         return self._to_domain(model)
 
-    async def update(self, investigation: Investigation) -> Investigation:
-        stmt = select(InvestigationModel).where(InvestigationModel.id == investigation.id)
+    async def update(
+        self,
+        investigation: Investigation,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> Investigation:
+        stmt = (
+            select(InvestigationModel)
+            .where(
+                InvestigationModel.id == investigation.id,
+                InvestigationModel.organization_id == organization_id,
+            )
+            .options(
+                selectinload(InvestigationModel.evidence),
+                selectinload(InvestigationModel.hypotheses),
+                selectinload(InvestigationModel.validations),
+                selectinload(InvestigationModel.conclusion),
+            )
+        )
+        if workspace_id is not None:
+            stmt = stmt.where(InvestigationModel.workspace_id == workspace_id)
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
         if model is None:
@@ -179,8 +242,11 @@ class InvestigationPostgresRepository(InvestigationRepository):
 
         # Update fields
         model.objective = investigation.objective
-        model.status = investigation.status.value
+        model.status = investigation.status
+        model.phase = investigation.phase
         model.completed_at = investigation.completed_at
+        model.organization_id = investigation.organization_id
+        model.workspace_id = investigation.workspace_id
 
         # Clear and rebuild relationships
         model.evidence.clear()
@@ -207,9 +273,9 @@ class InvestigationPostgresRepository(InvestigationRepository):
                 HypothesisModel(
                     id=h.id,
                     text=h.text,
-                    supporting_evidence_ids=h.supporting_evidence_ids,
-                    contradicting_evidence_ids=h.contradicting_evidence_ids,
-                    status=h.status.value,
+                    supporting_evidence_ids=_uuids_to_strings(h.supporting_evidence_ids),
+                    contradicting_evidence_ids=_uuids_to_strings(h.contradicting_evidence_ids),
+                    status=h.status,
                 )
             )
 
@@ -229,15 +295,97 @@ class InvestigationPostgresRepository(InvestigationRepository):
                 id=investigation.conclusion.id,
                 finding=investigation.conclusion.finding,
                 confidence=investigation.conclusion.confidence,
-                supporting_evidence_ids=investigation.conclusion.supporting_evidence_ids,
+                supporting_evidence_ids=_uuids_to_strings(
+                    investigation.conclusion.supporting_evidence_ids
+                ),
                 unresolved_uncertainty=investigation.conclusion.unresolved_uncertainty,
             )
 
         await self._session.flush()
-        return self._to_domain(model)
+        # Reload with relationships to avoid lazy loading
+        stmt = (
+            select(InvestigationModel)
+            .where(InvestigationModel.id == model.id)
+            .options(
+                selectinload(InvestigationModel.evidence),
+                selectinload(InvestigationModel.hypotheses),
+                selectinload(InvestigationModel.validations),
+                selectinload(InvestigationModel.conclusion),
+            )
+        )
+        result = await self._session.execute(stmt)
+        loaded_model = result.scalar_one()
+        return self._to_domain(loaded_model)
 
-    async def delete(self, investigation_id: UUID) -> bool:
-        stmt = select(InvestigationModel).where(InvestigationModel.id == investigation_id)
+    async def add_event(self, event: InvestigationEvent) -> InvestigationEvent:
+        model = InvestigationEventModel(
+            id=event.id,
+            investigation_id=event.investigation_id,
+            event_type=event.event_type,
+            phase=event.phase,
+            event_metadata=event.metadata,
+            created_at=event.created_at,
+        )
+        self._session.add(model)
+        await self._session.flush()
+        return event
+
+    async def list_events(
+        self,
+        investigation_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+        limit: int = 100,
+        after_id: UUID | None = None,
+    ) -> list[InvestigationEvent]:
+        stmt = (
+            select(InvestigationEventModel)
+            .join(
+                InvestigationModel,
+                InvestigationModel.id == InvestigationEventModel.investigation_id,
+            )
+            .where(
+                InvestigationEventModel.investigation_id == investigation_id,
+                InvestigationModel.organization_id == organization_id,
+            )
+            .order_by(InvestigationEventModel.created_at.asc())
+            .limit(limit)
+        )
+        if workspace_id is not None:
+            stmt = stmt.where(InvestigationModel.workspace_id == workspace_id)
+        if after_id is not None:
+            stmt = stmt.where(
+                InvestigationEventModel.created_at > (
+                    select(InvestigationEventModel.created_at)
+                    .where(InvestigationEventModel.id == after_id)
+                    .scalar_subquery()
+                )
+            )
+        result = await self._session.execute(stmt)
+        return [
+            InvestigationEvent(
+                id=model.id,
+                investigation_id=model.investigation_id,
+                event_type=model.event_type,
+                phase=model.phase,
+                metadata=model.event_metadata,
+                created_at=model.created_at,
+            )
+            for model in result.scalars().all()
+        ]
+
+    async def delete(
+        self,
+        investigation_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> bool:
+        stmt = select(InvestigationModel).where(
+            InvestigationModel.id == investigation_id,
+            InvestigationModel.organization_id == organization_id,
+        )
+        if workspace_id is not None:
+            stmt = stmt.where(InvestigationModel.workspace_id == workspace_id)
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
         if model is None:
@@ -255,16 +403,26 @@ class InvestigationPostgresRepository(InvestigationRepository):
         offset: int = 0,
         sort_by: str = "started_at",
         sort_order: str = "desc",
-    ) -> Sequence[Investigation]:
-        stmt = select(InvestigationModel)
+    ) -> list[Investigation]:
+        stmt = select(InvestigationModel).options(
+            selectinload(InvestigationModel.evidence),
+            selectinload(InvestigationModel.hypotheses),
+            selectinload(InvestigationModel.validations),
+            selectinload(InvestigationModel.conclusion),
+        )
 
-        # Note: Investigation model doesn't have organization_id/workspace_id
-        # The interface requires these but the domain model doesn't have them
-        # We'll filter by status if provided
+        # Filter by organization_id
+        stmt = stmt.where(InvestigationModel.organization_id == organization_id)
+
+        # Filter by workspace_id if provided
+        if workspace_id is not None:
+            stmt = stmt.where(InvestigationModel.workspace_id == workspace_id)
+
         if status:
             stmt = stmt.where(InvestigationModel.status.in_(status))
 
         # Sorting
+        order_col: ColumnElement[Any]
         if sort_by == "started_at":
             order_col = InvestigationModel.started_at
         elif sort_by == "completed_at":
@@ -289,7 +447,11 @@ class InvestigationPostgresRepository(InvestigationRepository):
         workspace_id: UUID | None = None,
         status: list[str] | None = None,
     ) -> int:
-        stmt = select(func.count(InvestigationModel.id))
+        stmt = select(func.count(InvestigationModel.id)).where(
+            InvestigationModel.organization_id == organization_id
+        )
+        if workspace_id is not None:
+            stmt = stmt.where(InvestigationModel.workspace_id == workspace_id)
         if status:
             stmt = stmt.where(InvestigationModel.status.in_(status))
         result = await self._session.execute(stmt)

@@ -1,10 +1,17 @@
+import asyncio
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from pathlib import Path
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
-
+from alembic import command
+from alembic.config import Config
 from packages.persistence.config import database_settings
-
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -48,10 +55,15 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    from packages.persistence.base import Base
-    engine = get_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """Apply Alembic migrations in a worker thread.
+
+    Alembic's async environment uses asyncio.run(), so it must not be invoked
+    directly from the application's running event loop.
+    """
+    alembic_dir = Path(__file__).with_name("alembic")
+    config = Config()
+    config.set_main_option("script_location", str(alembic_dir))
+    await asyncio.to_thread(command.upgrade, config, "head")
 
 
 async def close_db() -> None:

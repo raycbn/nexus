@@ -1,52 +1,43 @@
 from datetime import datetime
-from typing import Any
-from uuid import UUID, uuid4
+from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from packages.domain.models.agent import Agent
-from packages.domain.models.audit_event import AuditEvent
-from packages.domain.models.enums import ActorType
+from packages.auth import get_current_principal, get_tenant_context, require_permissions
+from packages.domain.models.context import TenantContext
+from packages.domain.models.enums import ActorType, IncidentStatus, Severity
+from packages.domain.models.identity import AuthenticatedPrincipal
 from packages.domain.models.incident import (
     Incident,
-    IncidentStatus,
-    Severity,
 )
-from packages.domain.models.resource import Resource
 from packages.incidents.engine import IncidentEngine
-from packages.incidents.in_memory_repository import InMemoryIncidentRepository
+from packages.persistence.repositories.audit import AuditEventRepository
+from packages.persistence.repositories.core import CoreRepository
+from packages.persistence.repositories.incident import IncidentPostgresRepository
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from apps.api.dependencies import get_db_session
 
 router = APIRouter(prefix="/incidents", tags=["incidents"])
 
 
-# In-memory stores for development
-_incident_repository: InMemoryIncidentRepository | None = None
-_incident_engine: IncidentEngine | None = None
-_resources: dict[UUID, Resource] = {}
-_agents: dict[UUID, Agent] = {}
-_audit_events: list[AuditEvent] = []
-_organization_id = uuid4()
-_workspace_id = uuid4()
-
-
-def get_incident_repository() -> InMemoryIncidentRepository:
-    global _incident_repository
-    if _incident_repository is None:
-        _incident_repository = InMemoryIncidentRepository()
-    return _incident_repository
+def get_incident_repository(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> IncidentPostgresRepository:
+    return IncidentPostgresRepository(session)
 
 
 def get_incident_engine(
-    repo: InMemoryIncidentRepository = Depends(get_incident_repository),
+    tenant: Annotated[TenantContext, Depends(get_tenant_context)],
+    repo: Annotated[IncidentPostgresRepository, Depends(get_incident_repository)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> IncidentEngine:
-    global _incident_engine
-    if _incident_engine is None:
-        _incident_engine = IncidentEngine(
-            repository=repo,
-            organization_id=_organization_id,
-            workspace_id=_workspace_id,
-        )
-    return _incident_engine
+    return IncidentEngine(
+        repository=repo,
+        tenant_context=tenant,
+        audit_repository=AuditEventRepository(session),
+    )
 
 
 # DTOs
@@ -201,7 +192,6 @@ async def list_incidents(
     engine: IncidentEngine = Depends(get_incident_engine),
 ) -> IncidentListResponseDTO:
     incidents = await engine.list_incidents(
-        workspace_id=_workspace_id,
         status=status,
         severity=severity,
         search=search,
@@ -211,7 +201,6 @@ async def list_incidents(
         sort_order=sort_order,
     )
     total = await engine.count_incidents(
-        workspace_id=_workspace_id,
         status=status,
         severity=severity,
         search=search,
@@ -224,30 +213,46 @@ async def list_incidents(
     )
 
 
-@router.post("", response_model=IncidentDetailDTO, status_code=201)
-async def create_incident(
+async def _create_incident_impl(
     dto: IncidentCreateDTO,
-    engine: IncidentEngine = Depends(get_incident_engine),
+    engine: Annotated[IncidentEngine, Depends(get_incident_engine)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(get_current_principal)],
+    tenant: Annotated[TenantContext, Depends(require_permissions("incidents.manage"))],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> IncidentDetailDTO:
     try:
         severity = _map_severity(dto.severity)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid severity: {dto.severity}") from e
 
-    actor_id = uuid4()  # In real impl, get from auth context
+    resources = await CoreRepository(session).get_resources_by_ids(
+        tenant.organization_id,
+        dto.affected_resource_ids,
+        tenant.workspace_id,
+    )
+    if len(resources) != len(set(dto.affected_resource_ids)):
+        raise HTTPException(status_code=404, detail="One or more resources were not found")
+
     incident = await engine.create_incident(
         title=dto.title,
         description=dto.description,
         severity=severity,
         affected_resource_ids=dto.affected_resource_ids,
-        actor_id=actor_id,
-        actor_type=ActorType.SYSTEM,
+        actor_id=principal.user_id,
+        actor_type=ActorType.USER,
     )
 
     if not incident:
         raise HTTPException(status_code=500, detail="Failed to create incident")
 
     return _incident_to_detail(incident)
+
+
+create_incident = router.post(
+    "",
+    response_model=IncidentDetailDTO,
+    status_code=201,
+)(_create_incident_impl)
 
 
 @router.get("/{incident_id}", response_model=IncidentDetailDTO)
@@ -291,18 +296,19 @@ async def get_incident_timeline(
 async def transition_incident_status(
     incident_id: UUID,
     dto: IncidentStatusUpdateDTO,
-    engine: IncidentEngine = Depends(get_incident_engine),
+    engine: Annotated[IncidentEngine, Depends(get_incident_engine)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(get_current_principal)],
+    _tenant: Annotated[TenantContext, Depends(require_permissions("incidents.manage"))],
 ) -> IncidentDetailDTO:
     try:
         new_status = _map_status(dto.status)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid status: {dto.status}") from e
 
-    actor_id = uuid4()  # In real impl, get from auth context
     incident = await engine.transition_status(
         incident_id=incident_id,
         new_status=new_status,
-        actor_id=actor_id,
+        actor_id=principal.user_id,
         actor_type=ActorType.SYSTEM,
     )
 
@@ -316,18 +322,19 @@ async def transition_incident_status(
 async def update_incident_severity(
     incident_id: UUID,
     dto: IncidentSeverityUpdateDTO,
-    engine: IncidentEngine = Depends(get_incident_engine),
+    engine: Annotated[IncidentEngine, Depends(get_incident_engine)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(get_current_principal)],
+    _tenant: Annotated[TenantContext, Depends(require_permissions("incidents.manage"))],
 ) -> IncidentDetailDTO:
     try:
         severity = _map_severity(dto.severity)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid severity: {dto.severity}") from e
 
-    actor_id = uuid4()  # In real impl, get from auth context
     incident = await engine.set_severity(
         incident_id=incident_id,
         severity=severity,
-        actor_id=actor_id,
+        actor_id=principal.user_id,
         actor_type=ActorType.SYSTEM,
     )
 
@@ -340,12 +347,13 @@ async def update_incident_severity(
 @router.post("/{incident_id}/resolve", response_model=IncidentDetailDTO)
 async def resolve_incident(
     incident_id: UUID,
-    engine: IncidentEngine = Depends(get_incident_engine),
+    engine: Annotated[IncidentEngine, Depends(get_incident_engine)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(get_current_principal)],
+    _tenant: Annotated[TenantContext, Depends(require_permissions("incidents.manage"))],
 ) -> IncidentDetailDTO:
-    actor_id = uuid4()
     incident = await engine.resolve_incident(
         incident_id=incident_id,
-        actor_id=actor_id,
+        actor_id=principal.user_id,
         actor_type=ActorType.SYSTEM,
     )
 
@@ -358,12 +366,13 @@ async def resolve_incident(
 @router.post("/{incident_id}/close", response_model=IncidentDetailDTO)
 async def close_incident(
     incident_id: UUID,
-    engine: IncidentEngine = Depends(get_incident_engine),
+    engine: Annotated[IncidentEngine, Depends(get_incident_engine)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(get_current_principal)],
+    _tenant: Annotated[TenantContext, Depends(require_permissions("incidents.manage"))],
 ) -> IncidentDetailDTO:
-    actor_id = uuid4()
     incident = await engine.close_incident(
         incident_id=incident_id,
-        actor_id=actor_id,
+        actor_id=principal.user_id,
         actor_type=ActorType.SYSTEM,
     )
 

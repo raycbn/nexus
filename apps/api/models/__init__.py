@@ -10,7 +10,7 @@ class IncidentTimelineEntryDTO(BaseModel):
     incident_id: UUID
     event_type: str
     actor_type: str
-    actor_id: UUID | None = None
+    actor_id: UUID
     description: str
     related_tool: str | None = None
     related_resource_id: UUID | None = None
@@ -172,10 +172,20 @@ class ConclusionDTO(BaseModel):
     unresolved_uncertainty: str | None = None
 
 
+class InvestigationEventDTO(BaseModel):
+    id: UUID
+    investigation_id: UUID
+    event_type: str
+    phase: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
 class InvestigationDetailDTO(BaseModel):
     id: UUID
     objective: str
     status: str
+    phase: str = "collection"
     started_at: datetime
     completed_at: datetime | None = None
     evidence: list[EvidenceDTO]
@@ -186,3 +196,4 @@ class InvestigationDetailDTO(BaseModel):
 
 class InvestigationCreateDTO(BaseModel):
     objective: str = Field(min_length=1, max_length=1000)
+    resource_id: UUID | None = None

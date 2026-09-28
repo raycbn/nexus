@@ -3,11 +3,20 @@ from collections.abc import AsyncIterator
 
 import pytest
 from packages.connectors.base import Connector
-from packages.connectors.base.models import DiscoverResult, HealthStatus, ReadResult
+from packages.connectors.base.models import (
+    ConnectorCapabilities,
+    DiscoverResult,
+    HealthStatus,
+    ReadResult,
+)
 from packages.domain.models.resource import Resource
 
 
 class DummyConnector(Connector):
+    @property
+    def capabilities(self) -> ConnectorCapabilities:
+        return ConnectorCapabilities(read=True, write=False, discover=True)
+
     async def connect(self, resource: Resource) -> None:
         pass
 

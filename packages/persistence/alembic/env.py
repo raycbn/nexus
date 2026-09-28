@@ -2,15 +2,15 @@ import os
 import sys
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from alembic import context
-
 # Add the project root to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
+import packages.persistence.models  # noqa: F401
 from packages.persistence.base import Base
 from packages.persistence.config import database_settings
 
@@ -51,8 +51,6 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    from sqlalchemy.ext.asyncio import create_async_engine
-    from sqlalchemy import pool
 
     connectable = create_async_engine(
         database_settings.database_url,
@@ -67,6 +65,7 @@ async def run_async_migrations() -> None:
 
 def run_migrations_online() -> None:
     import asyncio
+
     asyncio.run(run_async_migrations())
 
 

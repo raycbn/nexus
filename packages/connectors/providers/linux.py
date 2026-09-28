@@ -3,7 +3,13 @@ from typing import Any
 import asyncssh
 
 from packages.connectors.base import Connector
-from packages.connectors.base.models import HealthStatus, ReadResult
+from packages.connectors.base.models import (
+    ConnectorCapabilities,
+    HealthStatus,
+    ReadResult,
+    WriteAction,
+    WriteResult,
+)
 from packages.domain.exceptions import (
     ConnectorAuthenticationError,
     ConnectorCommandError,
@@ -29,6 +35,7 @@ class LinuxConnector(Connector):
         connect_timeout: float | None = None,
         command_timeout: float | None = None,
         key_passphrase: str | None = None,
+        write_runner=None,
     ) -> None:
         self._resource = resource
         self._host = host
@@ -40,6 +47,18 @@ class LinuxConnector(Connector):
         self._command_timeout = command_timeout or self.DEFAULT_COMMAND_TIMEOUT
         self._connection: asyncssh.SSHClientConnection | None = None
         self._connected: bool = False
+        from packages.connectors.write_runner import BlockedWriteRunner
+        self._write_runner = write_runner or BlockedWriteRunner()
+
+    @property
+    def capabilities(self) -> ConnectorCapabilities:
+        from packages.domain.config import NexusSettings
+
+        settings = NexusSettings()
+        write_enabled = settings.remediation_writes_enabled
+        if settings.remediation_lab_only and self._resource.environment != "lab":
+            write_enabled = False
+        return ConnectorCapabilities(read=True, write=write_enabled, discover=True)
 
     @property
     def is_connected(self) -> bool:
@@ -93,6 +112,23 @@ class LinuxConnector(Connector):
 
     async def discover(self, resource: Resource) -> Any:
         yield resource
+
+    async def execute_write(self, resource: Resource, action: WriteAction) -> WriteResult:
+        from packages.domain.config import NexusSettings
+
+        settings = NexusSettings()
+        if not settings.remediation_writes_enabled:
+            return WriteResult(success=False, error="Remediation writes are disabled")
+        if settings.remediation_lab_only and resource.environment != "lab":
+            return WriteResult(
+                success=False, error="Real remediation is restricted to lab resources"
+            )
+        if action.action_type != "restart_service":
+            return WriteResult(success=False, error="Unsupported write action")
+        service = action.parameters.get("service", "")
+        if not service or not service.replace("-", "").replace("_", "").isalnum():
+            return WriteResult(success=False, error="Unsafe service name")
+        return await self._write_runner.run(resource, action)
 
     async def execute_read(self, resource: Resource, command: str) -> ReadResult:
         if not self._connected:

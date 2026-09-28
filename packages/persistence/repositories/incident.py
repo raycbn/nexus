@@ -1,17 +1,28 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 from uuid import UUID
 
-from packages.domain.models.incident import Incident, IncidentTimelineEntry
+from packages.domain.models.enums import IncidentStatus, Severity
+from packages.domain.models.incident import Incident, IncidentTimelineEntry, TimelineEventType
 from packages.incidents.repository import IncidentRepository
 from packages.persistence.models.incident import (
-    AuditEventModel,
     IncidentModel,
     IncidentTimelineEntryModel,
 )
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, cast, func, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+
+def _uuids_to_strings(uuids: Sequence[UUID]) -> list[str]:
+    return [str(u) for u in uuids]
+
+
+def _strings_to_uuids(strings: Sequence[str]) -> list[UUID]:
+    return [UUID(s) for s in strings]
 
 
 class IncidentPostgresRepository(IncidentRepository):
@@ -25,12 +36,12 @@ class IncidentPostgresRepository(IncidentRepository):
             workspace_id=model.workspace_id,
             title=model.title,
             description=model.description,
-            severity=model.severity,
-            status=model.status,
-            affected_resource_ids=model.affected_resource_ids,
+            severity=Severity(model.severity),
+            status=IncidentStatus(model.status),
+            affected_resource_ids=_strings_to_uuids(model.affected_resource_ids),
             assigned_agent_id=model.assigned_agent_id,
             investigation_id=model.investigation_id,
-            evidence_ids=model.evidence_ids,
+            evidence_ids=_strings_to_uuids(model.evidence_ids),
             conclusion_finding=model.conclusion_finding,
             conclusion_confidence=model.conclusion_confidence,
             conclusion_uncertainty=model.conclusion_uncertainty,
@@ -47,7 +58,7 @@ class IncidentPostgresRepository(IncidentRepository):
                 IncidentTimelineEntry(
                     id=entry.id,
                     incident_id=entry.incident_id,
-                    event_type=entry.event_type,
+                    event_type=TimelineEventType(entry.event_type),
                     actor_type=entry.actor_type,
                     actor_id=entry.actor_id,
                     description=entry.description,
@@ -71,12 +82,12 @@ class IncidentPostgresRepository(IncidentRepository):
             workspace_id=incident.workspace_id,
             title=incident.title,
             description=incident.description,
-            severity=incident.severity.value,
-            status=incident.status.value,
-            affected_resource_ids=incident.affected_resource_ids,
+            severity=incident.severity,
+            status=incident.status,
+            affected_resource_ids=_uuids_to_strings(incident.affected_resource_ids),
             assigned_agent_id=incident.assigned_agent_id,
             investigation_id=incident.investigation_id,
-            evidence_ids=incident.evidence_ids,
+            evidence_ids=_uuids_to_strings(incident.evidence_ids),
             conclusion_finding=incident.conclusion_finding,
             conclusion_confidence=incident.conclusion_confidence,
             conclusion_uncertainty=incident.conclusion_uncertainty,
@@ -93,7 +104,7 @@ class IncidentPostgresRepository(IncidentRepository):
                 IncidentTimelineEntryModel(
                     id=entry.id,
                     incident_id=entry.incident_id,
-                    event_type=entry.event_type.value,
+                    event_type=entry.event_type,
                     actor_type=entry.actor_type,
                     actor_id=entry.actor_id,
                     description=entry.description,
@@ -105,41 +116,69 @@ class IncidentPostgresRepository(IncidentRepository):
                 )
             )
 
-        # Audit events
-        for audit_id in incident.audit_event_ids:
-            model.audit_events.append(
-                AuditEventModel(
-                    id=audit_id,
-                    organization_id=incident.organization_id,
-                    workspace_id=incident.workspace_id,
-                    actor_type="system",
-                    actor_id=incident.id,
-                    event_type="incident_updated",
-                    action="update",
-                    result_status="success",
-                    event_metadata={},
-                    incident_id=incident.id,
-                )
-            )
-
         return model
 
     async def create(self, incident: Incident) -> Incident:
         model = self._to_model(incident)
         self._session.add(model)
         await self._session.flush()
-        return self._to_domain(model)
+        # Reload with relationships to avoid lazy loading
+        stmt = (
+            select(IncidentModel)
+            .where(IncidentModel.id == model.id)
+            .options(
+                selectinload(IncidentModel.timeline_entries),
+                selectinload(IncidentModel.audit_events),
+            )
+        )
+        result = await self._session.execute(stmt)
+        loaded_model = result.scalar_one()
+        return self._to_domain(loaded_model)
 
-    async def get(self, incident_id: UUID) -> Incident | None:
-        stmt = select(IncidentModel).where(IncidentModel.id == incident_id)
+    async def get(
+        self,
+        incident_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> Incident | None:
+        stmt = (
+            select(IncidentModel)
+            .where(
+                IncidentModel.id == incident_id,
+                IncidentModel.organization_id == organization_id,
+            )
+            .options(
+                selectinload(IncidentModel.timeline_entries),
+                selectinload(IncidentModel.audit_events),
+            )
+        )
+        if workspace_id is not None:
+            stmt = stmt.where(IncidentModel.workspace_id == workspace_id)
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
         if model is None:
             return None
         return self._to_domain(model)
 
-    async def update(self, incident: Incident) -> Incident:
-        stmt = select(IncidentModel).where(IncidentModel.id == incident.id)
+    async def update(
+        self,
+        incident: Incident,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> Incident:
+        stmt = (
+            select(IncidentModel)
+            .where(
+                IncidentModel.id == incident.id,
+                IncidentModel.organization_id == organization_id,
+            )
+            .options(
+                selectinload(IncidentModel.timeline_entries),
+                selectinload(IncidentModel.audit_events),
+            )
+        )
+        if workspace_id is not None:
+            stmt = stmt.where(IncidentModel.workspace_id == workspace_id)
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
         if model is None:
@@ -148,12 +187,12 @@ class IncidentPostgresRepository(IncidentRepository):
         # Update fields
         model.title = incident.title
         model.description = incident.description
-        model.severity = incident.severity.value
-        model.status = incident.status.value
-        model.affected_resource_ids = incident.affected_resource_ids
+        model.severity = incident.severity
+        model.status = incident.status
+        model.affected_resource_ids = _uuids_to_strings(incident.affected_resource_ids)
         model.assigned_agent_id = incident.assigned_agent_id
         model.investigation_id = incident.investigation_id
-        model.evidence_ids = incident.evidence_ids
+        model.evidence_ids = _uuids_to_strings(incident.evidence_ids)
         model.conclusion_finding = incident.conclusion_finding
         model.conclusion_confidence = incident.conclusion_confidence
         model.conclusion_uncertainty = incident.conclusion_uncertainty
@@ -164,7 +203,6 @@ class IncidentPostgresRepository(IncidentRepository):
 
         # Clear and rebuild relationships
         model.timeline_entries.clear()
-        model.audit_events.clear()
 
         # Rebuild timeline entries
         for entry in incident.timeline:
@@ -172,7 +210,7 @@ class IncidentPostgresRepository(IncidentRepository):
                 IncidentTimelineEntryModel(
                     id=entry.id,
                     incident_id=entry.incident_id,
-                    event_type=entry.event_type.value,
+                    event_type=entry.event_type,
                     actor_type=entry.actor_type,
                     actor_id=entry.actor_id,
                     description=entry.description,
@@ -184,28 +222,32 @@ class IncidentPostgresRepository(IncidentRepository):
                 )
             )
 
-        # Rebuild audit events
-        for audit_id in incident.audit_event_ids:
-            model.audit_events.append(
-                AuditEventModel(
-                    id=audit_id,
-                    organization_id=incident.organization_id,
-                    workspace_id=incident.workspace_id,
-                    actor_type="system",
-                    actor_id=incident.id,
-                    event_type="incident_updated",
-                    action="update",
-                    result_status="success",
-                    event_metadata={},
-                    incident_id=incident.id,
-                )
-            )
-
         await self._session.flush()
-        return self._to_domain(model)
+        # Reload with relationships to avoid lazy loading
+        stmt = (
+            select(IncidentModel)
+            .where(IncidentModel.id == model.id)
+            .options(
+                selectinload(IncidentModel.timeline_entries),
+                selectinload(IncidentModel.audit_events),
+            )
+        )
+        result = await self._session.execute(stmt)
+        loaded_model = result.scalar_one()
+        return self._to_domain(loaded_model)
 
-    async def delete(self, incident_id: UUID) -> bool:
-        stmt = select(IncidentModel).where(IncidentModel.id == incident_id)
+    async def delete(
+        self,
+        incident_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> bool:
+        stmt = select(IncidentModel).where(
+            IncidentModel.id == incident_id,
+            IncidentModel.organization_id == organization_id,
+        )
+        if workspace_id is not None:
+            stmt = stmt.where(IncidentModel.workspace_id == workspace_id)
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
         if model is None:
@@ -225,8 +267,15 @@ class IncidentPostgresRepository(IncidentRepository):
         offset: int = 0,
         sort_by: str = "updated_at",
         sort_order: str = "desc",
-    ) -> Sequence[Incident]:
-        stmt = select(IncidentModel).where(IncidentModel.organization_id == organization_id)
+    ) -> list[Incident]:
+        stmt = (
+            select(IncidentModel)
+            .where(IncidentModel.organization_id == organization_id)
+            .options(
+                selectinload(IncidentModel.timeline_entries),
+                selectinload(IncidentModel.audit_events),
+            )
+        )
 
         if workspace_id is not None:
             stmt = stmt.where(IncidentModel.workspace_id == workspace_id)
@@ -245,6 +294,7 @@ class IncidentPostgresRepository(IncidentRepository):
             )
 
         # Sorting
+        order_col: ColumnElement[Any]
         if sort_by == "created_at":
             order_col = IncidentModel.created_at
         elif sort_by == "updated_at":
@@ -296,16 +346,44 @@ class IncidentPostgresRepository(IncidentRepository):
         result = await self._session.execute(stmt)
         return result.scalar_one()
 
-    async def get_by_resource(self, resource_id: UUID) -> Sequence[Incident]:
-        stmt = select(IncidentModel).where(
-            IncidentModel.affected_resource_ids.op("@>")([resource_id])
+    async def get_by_resource(
+        self,
+        resource_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> list[Incident]:
+        stmt = (
+            select(IncidentModel)
+            .where(IncidentModel.affected_resource_ids.op("@>")(cast([str(resource_id)], JSONB)))
+            .where(IncidentModel.organization_id == organization_id)
+            .options(
+                selectinload(IncidentModel.timeline_entries),
+                selectinload(IncidentModel.audit_events),
+            )
         )
+        if workspace_id is not None:
+            stmt = stmt.where(IncidentModel.workspace_id == workspace_id)
         result = await self._session.execute(stmt)
         models = result.scalars().all()
         return [self._to_domain(m) for m in models]
 
-    async def get_by_investigation(self, investigation_id: UUID) -> Incident | None:
-        stmt = select(IncidentModel).where(IncidentModel.investigation_id == investigation_id)
+    async def get_by_investigation(
+        self,
+        investigation_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> Incident | None:
+        stmt = (
+            select(IncidentModel)
+            .where(
+                IncidentModel.investigation_id == investigation_id,
+                IncidentModel.organization_id == organization_id,
+            )
+            .options(
+                selectinload(IncidentModel.timeline_entries),
+                selectinload(IncidentModel.audit_events),
+            )
+        )
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
         if model is None:

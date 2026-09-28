@@ -4,11 +4,17 @@ from enum import StrEnum
 class ResourceType(StrEnum):
     LINUX_SERVER = "linux_server"
     WINDOWS_SERVER = "windows_server"
+    SERVICE = "service"
+    APPLICATION = "application"
+    DATABASE = "database"
     DOCKER_HOST = "docker_host"
     POSTGRESQL = "postgresql"
     SQL_SERVER = "sql_server"
     KUBERNETES = "kubernetes"
     VMWARE = "vmware"
+    AWS = "aws"
+    AZURE = "azure"
+    GCP = "gcp"
     GENERIC_API = "generic_api"
 
 
@@ -71,6 +77,9 @@ class EventType(StrEnum):
     CONNECTOR_CONNECTED = "connector_connected"
     CONNECTOR_DISCONNECTED = "connector_disconnected"
     CONNECTOR_HEALTH_CHECK = "connector_health_check"
+    REMEDIATION_PROPOSED = "remediation_proposed"
+    REMEDIATION_APPROVED = "remediation_approved"
+    REMEDIATION_REJECTED = "remediation_rejected"
 
 
 class ResultStatus(StrEnum):

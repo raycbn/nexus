@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useIncidents, useCreateIncident } from '../hooks/useApi';
+import { useIncidents, useCreateIncident, useResources } from '../hooks/useApi';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Select } from '../components/Select';
@@ -30,7 +30,7 @@ const SEVERITY_OPTIONS: { value: Severity; label: string }[] = [
   { value: 'critical', label: 'Critical' },
 ];
 
-function IncidentRow({ incident, onClick }: { incident: IncidentSummaryDTO; onClick: () => void }) {
+function IncidentRow({ incident, onClick, resourceNames }: { incident: IncidentSummaryDTO; onClick: () => void; resourceNames: Map<string, string> }) {
   const getStatusClass = (status: string) => {
     const classes: Record<string, string> = {
       detected: 'bg-blue-900/30 text-blue-300 border-blue-800',
@@ -67,8 +67,8 @@ function IncidentRow({ incident, onClick }: { incident: IncidentSummaryDTO; onCl
           {incident.severity.charAt(0).toUpperCase() + incident.severity.slice(1)}
         </Badge>
       </td>
-      <td className="text-nexus-textMuted font-mono text-xs">
-        {incident.affected_resource_ids[0] ? incident.affected_resource_ids[0].slice(0, 12) : '—'}
+      <td className="text-nexus-textMuted text-sm">
+        {incident.affected_resource_ids[0] ? (resourceNames.get(incident.affected_resource_ids[0]) || incident.affected_resource_ids[0].slice(0, 12)) : '—'}
       </td>
       <td className="text-nexus-textMuted text-sm">{formatRelativeTime(incident.created_at)}</td>
       <td className="text-nexus-textMuted text-sm">{formatRelativeTime(incident.updated_at)}</td>
@@ -118,10 +118,11 @@ function IncidentFilters({ status, severity, search, onStatusChange, onSeverityC
   );
 }
 
-function CreateIncidentModal({ isOpen, onClose, onSubmit }: {
+function CreateIncidentModal({ isOpen, onClose, onSubmit, resources }: {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: IncidentCreateDTO) => void;
+  resources: { id: string; name: string; resource_type: string }[];
 }) {
   interface ModalFormData {
     title: string;
@@ -133,7 +134,7 @@ function CreateIncidentModal({ isOpen, onClose, onSubmit }: {
     title: '',
     description: '',
     severity: 'medium',
-    affected_resource_ids: ['00000000-0000-0000-0000-000000000001'],
+    affected_resource_ids: [],
   });
   const [errors, setErrors] = useState<Partial<IncidentCreateDTO>>({});
 
@@ -160,7 +161,7 @@ function CreateIncidentModal({ isOpen, onClose, onSubmit }: {
       };
       onSubmit(submitData);
       onClose();
-      setFormData({ title: '', description: '', severity: 'medium', affected_resource_ids: ['00000000-0000-0000-0000-000000000001'] });
+      setFormData({ title: '', description: '', severity: 'medium', affected_resource_ids: [] });
     }
   };
 
@@ -192,9 +193,10 @@ function CreateIncidentModal({ isOpen, onClose, onSubmit }: {
           <Select
             label=""
             placeholder="Select resources"
-            options={[
-              { value: '00000000-0000-0000-0000-000000000001', label: 'linux-lab-01 (linux_server)' },
-            ]}
+            options={resources.map((resource) => ({
+              value: resource.id,
+              label: `${resource.name} (${resource.resource_type.replace('_', ' ')})`,
+            }))}
             value={Array.isArray(formData.affected_resource_ids) ? formData.affected_resource_ids.join(',') : formData.affected_resource_ids}
             onChange={(e) => setFormData({ ...formData, affected_resource_ids: e.target.value ? e.target.value.split(',') : [] })}
           />
@@ -230,6 +232,8 @@ export function IncidentsPage() {
   });
 
   const createMutation = useCreateIncident();
+  const { data: resourcesData } = useResources();
+  const resourceNames = new Map((resourcesData?.resources || []).map((resource) => [resource.id, resource.name]));
 
   const handleCreateIncident = async (data: IncidentCreateDTO) => {
     await createMutation.mutateAsync(data);
@@ -331,6 +335,7 @@ export function IncidentsPage() {
                     <IncidentRow
                       key={incident.id}
                       incident={incident}
+                      resourceNames={resourceNames}
                       onClick={() => navigate(`/incidents/${incident.id}`)}
                     />
                   ))}
@@ -372,6 +377,7 @@ export function IncidentsPage() {
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onSubmit={handleCreateIncident}
+        resources={resourcesData?.resources || []}
       />
     </div>
   );

@@ -15,7 +15,10 @@ from packages.persistence.models.incident import (
     IncidentModel,
     IncidentTimelineEntryModel,
 )
-from packages.persistence.repositories.incident import IncidentPostgresRepository
+from packages.persistence.repositories.incident import (
+    IncidentPostgresRepository,
+    _strings_to_uuids,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -77,10 +80,10 @@ def sample_model(sample_incident: Incident) -> IncidentModel:
         description=sample_incident.description,
         severity=sample_incident.severity.value,
         status=sample_incident.status.value,
-        affected_resource_ids=sample_incident.affected_resource_ids,
+        affected_resource_ids=[str(u) for u in sample_incident.affected_resource_ids],
         assigned_agent_id=sample_incident.assigned_agent_id,
         investigation_id=sample_incident.investigation_id,
-        evidence_ids=sample_incident.evidence_ids,
+        evidence_ids=[str(u) for u in sample_incident.evidence_ids],
         conclusion_finding=sample_incident.conclusion_finding,
         conclusion_confidence=sample_incident.conclusion_confidence,
         conclusion_uncertainty=sample_incident.conclusion_uncertainty,
@@ -129,7 +132,7 @@ def make_mock_result(scalar_result):
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = scalar_result
     mock_result.scalars.return_value.all.return_value = [scalar_result] if scalar_result else []
-    mock_result.scalar_one.return_value = 5
+    mock_result.scalar_one.return_value = scalar_result
     return mock_result
 
 
@@ -147,10 +150,10 @@ class TestIncidentPostgresRepository:
         assert domain.description == sample_model.description
         assert domain.severity == sample_model.severity
         assert domain.status == sample_model.status
-        assert domain.affected_resource_ids == sample_model.affected_resource_ids
+        assert domain.affected_resource_ids == _strings_to_uuids(sample_model.affected_resource_ids)
         assert domain.assigned_agent_id == sample_model.assigned_agent_id
         assert domain.investigation_id == sample_model.investigation_id
-        assert domain.evidence_ids == sample_model.evidence_ids
+        assert domain.evidence_ids == _strings_to_uuids(sample_model.evidence_ids)
         assert domain.conclusion_finding == sample_model.conclusion_finding
         assert domain.conclusion_confidence == sample_model.conclusion_confidence
         assert domain.conclusion_uncertainty == sample_model.conclusion_uncertainty
@@ -175,10 +178,12 @@ class TestIncidentPostgresRepository:
         assert model.description == sample_incident.description
         assert model.severity == sample_incident.severity.value
         assert model.status == sample_incident.status.value
-        assert model.affected_resource_ids == sample_incident.affected_resource_ids
+        assert model.affected_resource_ids == [
+            str(u) for u in sample_incident.affected_resource_ids
+        ]
         assert model.assigned_agent_id == sample_incident.assigned_agent_id
         assert model.investigation_id == sample_incident.investigation_id
-        assert model.evidence_ids == sample_incident.evidence_ids
+        assert model.evidence_ids == [str(u) for u in sample_incident.evidence_ids]
         assert model.conclusion_finding == sample_incident.conclusion_finding
         assert model.conclusion_confidence == sample_incident.conclusion_confidence
         assert model.conclusion_uncertainty == sample_incident.conclusion_uncertainty
@@ -188,13 +193,19 @@ class TestIncidentPostgresRepository:
         assert model.resolved_at == sample_incident.resolved_at
         assert model.closed_at == sample_incident.closed_at
         assert len(model.timeline_entries) == len(sample_incident.timeline)
-        assert len(model.audit_events) == len(sample_incident.audit_event_ids)
+        # Audit events are persisted independently by AuditEventRepository.
+        assert len(model.audit_events) == 0
 
     @pytest.mark.asyncio
     async def test_create(
-        self, repo: IncidentPostgresRepository, sample_incident: Incident, mock_session: AsyncMock
+        self,
+        repo: IncidentPostgresRepository,
+        sample_incident: Incident,
+        sample_model: IncidentModel,
+        mock_session: AsyncMock,
     ):
         mock_session.flush = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=make_mock_result(sample_model))
 
         result = await repo.create(sample_incident)
 
@@ -209,7 +220,11 @@ class TestIncidentPostgresRepository:
     ):
         mock_session.execute = AsyncMock(return_value=make_mock_result(sample_model))
 
-        result = await repo.get(sample_model.id)
+        result = await repo.get(
+            sample_model.id,
+            sample_model.organization_id,
+            sample_model.workspace_id,
+        )
 
         assert result is not None
         assert result.id == sample_model.id
@@ -219,7 +234,7 @@ class TestIncidentPostgresRepository:
     async def test_get_not_found(self, repo: IncidentPostgresRepository, mock_session: AsyncMock):
         mock_session.execute = AsyncMock(return_value=make_mock_result(None))
 
-        result = await repo.get(uuid4())
+        result = await repo.get(uuid4(), uuid4())
 
         assert result is None
 
@@ -231,10 +246,19 @@ class TestIncidentPostgresRepository:
         sample_model: IncidentModel,
         mock_session: AsyncMock,
     ):
-        mock_session.execute = AsyncMock(return_value=make_mock_result(sample_model))
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                make_mock_result(sample_model),
+                make_mock_result(sample_model),
+            ]
+        )
         mock_session.flush = AsyncMock()
 
-        result = await repo.update(sample_incident)
+        result = await repo.update(
+            sample_incident,
+            sample_incident.organization_id,
+            sample_incident.workspace_id,
+        )
 
         mock_session.flush.assert_awaited_once()
         assert result.id == sample_incident.id
@@ -247,7 +271,11 @@ class TestIncidentPostgresRepository:
         mock_session.execute = AsyncMock(return_value=make_mock_result(None))
 
         with pytest.raises(ValueError, match="not found"):
-            await repo.update(sample_incident)
+            await repo.update(
+                sample_incident,
+                sample_incident.organization_id,
+                sample_incident.workspace_id,
+            )
 
     @pytest.mark.asyncio
     async def test_delete_found(
@@ -257,7 +285,11 @@ class TestIncidentPostgresRepository:
         mock_session.flush = AsyncMock()
         mock_session.delete = AsyncMock()
 
-        result = await repo.delete(sample_model.id)
+        result = await repo.delete(
+            sample_model.id,
+            sample_model.organization_id,
+            sample_model.workspace_id,
+        )
 
         assert result is True
         mock_session.delete.assert_called_once_with(sample_model)
@@ -269,7 +301,7 @@ class TestIncidentPostgresRepository:
     ):
         mock_session.execute = AsyncMock(return_value=make_mock_result(None))
 
-        result = await repo.delete(uuid4())
+        result = await repo.delete(uuid4(), uuid4())
 
         assert result is False
 
@@ -309,7 +341,11 @@ class TestIncidentPostgresRepository:
     ):
         mock_session.execute = AsyncMock(return_value=make_mock_result(sample_model))
 
-        results = await repo.get_by_resource(sample_model.affected_resource_ids[0])
+        results = await repo.get_by_resource(
+            sample_model.affected_resource_ids[0],
+            sample_model.organization_id,
+            sample_model.workspace_id,
+        )
 
         assert len(results) == 1
         assert results[0].id == sample_model.id
@@ -320,7 +356,11 @@ class TestIncidentPostgresRepository:
     ):
         mock_session.execute = AsyncMock(return_value=make_mock_result(sample_model))
 
-        result = await repo.get_by_investigation(sample_model.investigation_id)
+        result = await repo.get_by_investigation(
+            sample_model.investigation_id,
+            sample_model.organization_id,
+            sample_model.workspace_id,
+        )
 
         assert result is not None
         assert result.id == sample_model.id
@@ -331,7 +371,7 @@ class TestIncidentPostgresRepository:
     ):
         mock_session.execute = AsyncMock(return_value=make_mock_result(None))
 
-        result = await repo.get_by_investigation(uuid4())
+        result = await repo.get_by_investigation(uuid4(), uuid4())
 
         assert result is None
 

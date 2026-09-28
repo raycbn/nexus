@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAuditEvents } from '../hooks/useApi';
+import { useAuditEvents, useAuditEvent } from '../hooks/useApi';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { LoadingOverlay, TableSkeleton } from '../components/Loading';
@@ -7,6 +7,7 @@ import { ErrorState, EmptyState } from '../components/EmptyState';
 import { Select } from '../components/Select';
 import { formatRelativeTime } from '../utils/helpers';
 import { cn } from '../utils/helpers';
+import type { AuditEventDTO } from '../types';
 import { ChevronDown, ChevronLeft, ChevronRight, FileText, User, Bot, Server, AlertTriangle, CheckCircle, XCircle, Clock, Shield } from 'lucide-react';
 
 const ACTOR_TYPE_OPTIONS = [
@@ -34,6 +35,9 @@ const EVENT_TYPE_OPTIONS = [
   { value: 'connector_connected', label: 'Connector Connected' },
   { value: 'connector_disconnected', label: 'Connector Disconnected' },
   { value: 'connector_health_check', label: 'Connector Health Check' },
+  { value: 'remediation_proposed', label: 'Remediation Proposed' },
+  { value: 'remediation_approved', label: 'Remediation Approved' },
+  { value: 'remediation_rejected', label: 'Remediation Rejected' },
 ];
 
 const RESULT_STATUS_OPTIONS = [
@@ -114,7 +118,7 @@ function AuditFilters({ actorType, eventType, resultStatus, onActorTypeChange, o
   );
 }
 
-function AuditRow({ event }: { event: any }) {
+function AuditRow({ event, onSelect }: { event: AuditEventDTO; onSelect: () => void }) {
   const getActorIcon = (type: string) => {
     switch (type) {
       case 'user': return <User className="h-4 w-4" />;
@@ -126,7 +130,7 @@ function AuditRow({ event }: { event: any }) {
   };
 
   return (
-    <tr className="hover:bg-nexus-surfaceHover transition-colors">
+    <tr className="hover:bg-nexus-surfaceHover transition-colors cursor-pointer" onClick={onSelect} title="View audit event details">
       <td className="flex items-center gap-3">
         <span className="text-nexus-textMuted">{getActorIcon(event.actor_type)}</span>
         <span className="font-medium text-nexus-text capitalize">{event.actor_type}</span>
@@ -162,6 +166,8 @@ function AuditRow({ event }: { event: any }) {
 
 export function AuditPage() {
   const [actorType, setActorType] = useState('');
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const { data: selectedEvent } = useAuditEvent(selectedEventId || '');
   const [eventType, setEventType] = useState('');
   const [resultStatus, setResultStatus] = useState('');
   const [sortBy, setSortBy] = useState('created_at');
@@ -173,6 +179,9 @@ export function AuditPage() {
     actor_type: actorType || undefined,
     event_type: eventType || undefined,
     resource_id: undefined,
+    result_status: resultStatus || undefined,
+    sort_by: sortBy,
+    sort_order: sortOrder,
     limit: LIMIT,
     offset: page * LIMIT,
   });
@@ -180,6 +189,11 @@ export function AuditPage() {
   const events = data?.events || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / LIMIT);
+
+  const updateFilter = (setter: (value: string) => void, value: string) => {
+    setter(value);
+    setPage(0);
+  };
 
   const handleSort = (column: string) => {
     if (sortBy === column) {
@@ -219,9 +233,9 @@ export function AuditPage() {
             actorType={actorType}
             eventType={eventType}
             resultStatus={resultStatus}
-            onActorTypeChange={setActorType}
-            onEventTypeChange={setEventType}
-            onResultStatusChange={setResultStatus}
+            onActorTypeChange={(value) => updateFilter(setActorType, value)}
+            onEventTypeChange={(value) => updateFilter(setEventType, value)}
+            onResultStatusChange={(value) => updateFilter(setResultStatus, value)}
           />
         </Card>
         <EmptyState
@@ -249,9 +263,9 @@ export function AuditPage() {
           actorType={actorType}
           eventType={eventType}
           resultStatus={resultStatus}
-          onActorTypeChange={setActorType}
-          onEventTypeChange={setEventType}
-          onResultStatusChange={setResultStatus}
+          onActorTypeChange={(value) => updateFilter(setActorType, value)}
+          onEventTypeChange={(value) => updateFilter(setEventType, value)}
+          onResultStatusChange={(value) => updateFilter(setResultStatus, value)}
         />
       </Card>
 
@@ -280,7 +294,7 @@ export function AuditPage() {
                 </thead>
                 <tbody>
                   {events.map((event) => (
-                    <AuditRow key={event.id} event={event} />
+                    <AuditRow key={event.id} event={event} onSelect={() => setSelectedEventId(event.id)} />
                   ))}
                 </tbody>
               </table>
@@ -292,6 +306,7 @@ export function AuditPage() {
                 <p className="text-sm text-nexus-textMuted">
                   Showing {page * 20 + 1} to {Math.min((page + 1) * 20, total)} of {total} events
                 </p>
+                {selectedEventId && <button onClick={() => setSelectedEventId(null)} className="text-xs text-nexus-textMuted hover:text-nexus-text">Clear selection</button>}
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setPage(p => Math.max(0, p - 1))}
@@ -313,6 +328,25 @@ export function AuditPage() {
           </>
         )}
       </Card>
+
+      {selectedEventId && selectedEvent && (
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-nexus-text">Audit Event Detail</h3>
+            <button onClick={() => setSelectedEventId(null)} className="text-sm text-nexus-textMuted hover:text-nexus-text">Close</button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div><span className="text-nexus-textMuted">Event:</span> <span className="text-nexus-text">{selectedEvent.event_type}</span></div>
+            <div><span className="text-nexus-textMuted">Action:</span> <span className="font-mono text-nexus-text">{selectedEvent.action}</span></div>
+            <div><span className="text-nexus-textMuted">Actor:</span> <span className="text-nexus-text">{selectedEvent.actor_type}</span></div>
+            <div><span className="text-nexus-textMuted">Result:</span> <span className="text-nexus-text">{selectedEvent.result_status}</span></div>
+          </div>
+          <details className="mt-4">
+            <summary className="text-sm text-nexus-textMuted cursor-pointer">Technical metadata</summary>
+            <pre className="mt-2 p-3 bg-nexus-surfaceHover rounded-lg border border-nexus-border text-xs overflow-auto text-nexus-textMuted">{JSON.stringify(selectedEvent.metadata || {}, null, 2)}</pre>
+          </details>
+        </Card>
+      )}
     </div>
   );
 }

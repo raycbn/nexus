@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from packages.connectors.base.models import ConnectorCapabilities
 from packages.domain.models.policy import Policy as PolicyModel
 from packages.policies.evaluator import PolicyEvaluator
 from packages.tools.providers.mock_tools import GetCpuUsageTool, GetSystemInfoTool
@@ -86,3 +87,39 @@ def test_policy_denies_when_tool_not_in_allowed_tool_ids():
     allowed, reason = evaluator.is_allowed(tool, ["get_cpu_usage"])
     assert allowed is False
     assert "not in agent" in reason
+
+
+def test_connector_read_capability_is_allowed():
+    evaluator = PolicyEvaluator(make_policy())
+    capabilities = ConnectorCapabilities(read=True, write=False, discover=True)
+    allowed, reason = evaluator.is_operation_allowed(capabilities, "read")
+    assert allowed is True
+    assert reason is None
+
+
+def test_connector_write_capability_is_denied_when_disabled():
+    evaluator = PolicyEvaluator(make_policy())
+    capabilities = ConnectorCapabilities(read=True, write=False, discover=True)
+    allowed, reason = evaluator.is_operation_allowed(capabilities, "write")
+    assert allowed is False
+    assert "capability denied" in reason.lower()
+
+
+def test_connector_unknown_operation_is_denied():
+    evaluator = PolicyEvaluator(make_policy())
+    capabilities = ConnectorCapabilities()
+    allowed, reason = evaluator.is_operation_allowed(capabilities, "delete")
+    assert allowed is False
+    assert "unsupported" in reason.lower()
+
+def test_tool_execution_denied_when_connector_read_capability_is_disabled():
+    class ReadOnlyToolWithoutConnectorRead(GetSystemInfoTool):
+        def get_connector_capabilities(self):
+            return ConnectorCapabilities(read=False, write=False, discover=True)
+
+    evaluator = PolicyEvaluator(make_policy(allowed=["get_system_info"]))
+    tool = ReadOnlyToolWithoutConnectorRead()
+    allowed, reason = evaluator.is_tool_execution_allowed(tool, ["get_system_info"])
+    assert allowed is False
+    assert "capability denied: read" in reason.lower()
+

@@ -21,6 +21,7 @@ class LLMMessage(BaseModel):
 class LLMRequest(BaseModel):
     messages: list[LLMMessage]
     tools: list[str] = Field(default_factory=list)
+    response_format: str | dict[str, Any] | None = None
 
 
 class LLMResponse(BaseModel):

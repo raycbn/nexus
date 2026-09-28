@@ -16,6 +16,7 @@ class OllamaProvider(LLMProvider):
         model: str | None = None,
         registry: ToolRegistry | None = None,
         timeout: int | None = None,
+        num_predict: int | None = None,
     ) -> None:
         settings = NexusSettings()
         self._host = host or settings.ollama_host
@@ -24,6 +25,7 @@ class OllamaProvider(LLMProvider):
         self._registry = registry
         self._think: bool | str = settings.ollama_think
         self._num_ctx: int = settings.ollama_num_ctx
+        self._num_predict: int | None = num_predict
         self._timeout: int = timeout or settings.ollama_timeout
         if self._model is None:
             raise RuntimeError(
@@ -51,6 +53,8 @@ class OllamaProvider(LLMProvider):
         tools = self._convert_tools(request.tools)
         think = self._think
         options = {"num_ctx": self._num_ctx}
+        if self._num_predict is not None:
+            options["num_predict"] = self._num_predict
 
         print("[LLM] Sending request...")
         print(f"[LLM] Model: {self._model}")
@@ -63,16 +67,26 @@ class OllamaProvider(LLMProvider):
                 messages=messages,
                 tools=tools if tools else None,
                 think=think,
+                format=request.response_format,
                 options=options,
             )
             llm_duration = time.perf_counter() - llm_start
         except Exception as e:
-            print(f"[LLM] Request failed: {e}", file=sys.stderr)
+            print(
+                f"[LLM] Request failed: {type(e).__name__}: {e!r}",
+                file=sys.stderr,
+            )
             raise RuntimeError(f"Ollama request failed: {e}") from e
 
         print(f"[LLM] Response received in {llm_duration:.3f}s")
-        result = OllamaMessageAdapter.from_ollama_response(response)
-        print(f"[LLM] Tool calls: {len(result.tool_calls)}")
+        if hasattr(response, "model_dump"):
+            response_payload = response.model_dump()
+        elif isinstance(response, dict):
+            response_payload = response
+        else:
+            raise RuntimeError(f"Unsupported Ollama response type: {type(response).__name__}")
+
+        result = OllamaMessageAdapter.from_ollama_response(response_payload)
         return result
 
     def _convert_tools(self, tool_identifiers: list[str]) -> list[dict[str, Any]]:

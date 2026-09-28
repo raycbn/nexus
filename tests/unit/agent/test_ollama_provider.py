@@ -81,6 +81,11 @@ def test_ollama_provider_accepts_custom_timeout():
     assert provider._timeout == 300
 
 
+def test_ollama_provider_accepts_custom_num_predict():
+    provider = OllamaProvider(host="localhost", model="test-model", num_predict=384)
+    assert provider._num_predict == 384
+
+
 @pytest.mark.asyncio
 async def test_ollama_provider_sends_think_in_request():
     provider = OllamaProvider(host="localhost", model="test-model")
@@ -98,6 +103,45 @@ async def test_ollama_provider_sends_think_in_request():
     _, kwargs = mock_client.chat.call_args
     assert "think" in kwargs
     assert kwargs["think"] is False
+
+
+@pytest.mark.asyncio
+async def test_ollama_provider_sends_num_predict_in_request():
+    provider = OllamaProvider(host="localhost", model="test-model", num_predict=384)
+
+    mock_client = AsyncMock()
+    mock_client.chat.return_value = {
+        "message": {"role": "assistant", "content": "{}"},
+    }
+
+    with patch.object(provider, "_ensure_client", return_value=mock_client):
+        await provider.generate(
+            LLMRequest(messages=[LLMMessage(role="user", content="Hi")])
+        )
+
+    _, kwargs = mock_client.chat.call_args
+    assert kwargs["options"] == {"num_ctx": 8192, "num_predict": 384}
+
+
+@pytest.mark.asyncio
+async def test_ollama_provider_sends_response_format_in_request():
+    provider = OllamaProvider(host="localhost", model="test-model")
+
+    mock_client = AsyncMock()
+    mock_client.chat.return_value = {
+        "message": {"role": "assistant", "content": "{}"},
+    }
+
+    with patch.object(provider, "_ensure_client", return_value=mock_client):
+        await provider.generate(
+            LLMRequest(
+                messages=[LLMMessage(role="user", content="Return JSON")],
+                response_format="json",
+            )
+        )
+
+    _, kwargs = mock_client.chat.call_args
+    assert kwargs["format"] == "json"
 
 
 @pytest.mark.asyncio

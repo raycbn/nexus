@@ -98,6 +98,11 @@ async def make_connector_with_fake_ssh(
 
 
 class TestLinuxConnectorConnection:
+    def test_capabilities_are_read_only(self, connector):
+        assert connector.capabilities.read is True
+        assert connector.capabilities.write is False
+        assert connector.capabilities.discover is True
+
     @pytest.mark.asyncio
     async def test_connect_sets_connected(self, resource):
         from unittest.mock import MagicMock

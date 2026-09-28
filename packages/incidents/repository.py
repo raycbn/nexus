@@ -10,13 +10,28 @@ class IncidentRepository(ABC):
     async def create(self, incident: Incident) -> Incident: ...
 
     @abstractmethod
-    async def get(self, incident_id: UUID) -> Incident | None: ...
+    async def get(
+        self,
+        incident_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> Incident | None: ...
 
     @abstractmethod
-    async def update(self, incident: Incident) -> Incident: ...
+    async def update(
+        self,
+        incident: Incident,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> Incident: ...
 
     @abstractmethod
-    async def delete(self, incident_id: UUID) -> bool: ...
+    async def delete(
+        self,
+        incident_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> bool: ...
 
     @abstractmethod
     async def list(
@@ -43,7 +58,17 @@ class IncidentRepository(ABC):
     ) -> int: ...
 
     @abstractmethod
-    async def get_by_resource(self, resource_id: UUID) -> builtins.list[Incident]: ...
+    async def get_by_resource(
+        self,
+        resource_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> builtins.list[Incident]: ...
 
     @abstractmethod
-    async def get_by_investigation(self, investigation_id: UUID) -> Incident | None: ...
+    async def get_by_investigation(
+        self,
+        investigation_id: UUID,
+        organization_id: UUID,
+        workspace_id: UUID | None = None,
+    ) -> Incident | None: ...
