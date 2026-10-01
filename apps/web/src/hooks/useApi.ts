@@ -26,6 +26,7 @@ import type {
   DiscoveryHistoryDTO,
   DiscoveryScheduleCreateDTO,
   DiscoveryScheduleDTO,
+  DiscoveryScheduleUpdateDTO,
   ConnectorDescriptorDTO,
 } from '../types';
 
@@ -490,6 +491,21 @@ export function useCreateDiscoverySchedule() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: DiscoveryScheduleCreateDTO) => api.createDiscoverySchedule(data),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['discovery-schedules'] }),
+  });
+}
+export function useUpdateDiscoverySchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: DiscoveryScheduleUpdateDTO }) => api.updateDiscoverySchedule(id, data),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['discovery-schedules'] }),
+  });
+}
+
+export function useDeleteDiscoverySchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteDiscoverySchedule(id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['discovery-schedules'] }),
   });
 }

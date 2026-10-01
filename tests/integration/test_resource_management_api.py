@@ -1,4 +1,4 @@
-﻿from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator
 from uuid import uuid4
 
 import pytest
@@ -252,3 +252,82 @@ async def test_resource_connection_binding_and_lab_health(
     finally:
         await _cleanup(resource_session_factory, org_id)
 
+
+
+@pytest.mark.asyncio
+async def test_discovery_schedule_crud_requires_connected_resource(
+    resource_client, resource_session_factory
+):
+    from uuid import UUID
+
+    from packages.persistence.models.credential import CredentialModel
+    from packages.persistence.models.resource_connection import ResourceConnectionModel
+
+    org_id, _user_id, workspace_id, token = await _seed_admin(resource_session_factory)
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        created = await resource_client.post(
+            "/api/resources", headers=headers,
+            json={"name": "scheduled-linux", "resource_type": "linux_server"},
+        )
+        assert created.status_code == 201
+        resource_id = created.json()["resource"]["id"]
+
+        missing_binding = await resource_client.post(
+            "/api/discovery-schedules", headers=headers,
+            json={"resource_id": resource_id, "cron_expression": "*/15 * * * *", "timezone": "UTC"},
+        )
+        assert missing_binding.status_code == 409
+
+        async with resource_session_factory() as session:
+            credential_id = uuid4()
+            session.add(CredentialModel(
+                id=credential_id, organization_id=org_id, workspace_id=workspace_id,
+                name="scheduled-test", credential_type="username_password",
+                secret_ref="NEXUS_TEST_SECRET",
+            ))
+            session.add(ResourceConnectionModel(
+                id=uuid4(), organization_id=org_id, workspace_id=workspace_id,
+                resource_id=UUID(resource_id), connector_key="linux",
+                credential_id=credential_id, config={"host": "localhost"},
+            ))
+            await session.commit()
+
+        schedule = await resource_client.post(
+            "/api/discovery-schedules", headers=headers,
+            json={"resource_id": resource_id, "cron_expression": "*/15 * * * *", "timezone": "UTC"},
+        )
+        assert schedule.status_code == 201
+        schedule_id = schedule.json()["id"]
+        assert schedule.json()["next_run_at"] is not None
+
+        detail = await resource_client.get(
+            f"/api/discovery-schedules/{schedule_id}", headers=headers
+        )
+        assert detail.status_code == 200
+
+        disabled = await resource_client.patch(
+            f"/api/discovery-schedules/{schedule_id}", headers=headers,
+            json={"enabled": False},
+        )
+        assert disabled.status_code == 200
+        assert disabled.json()["next_run_at"] is None
+
+        enabled = await resource_client.patch(
+            f"/api/discovery-schedules/{schedule_id}", headers=headers,
+            json={"enabled": True},
+        )
+        assert enabled.status_code == 200
+        assert enabled.json()["next_run_at"] is not None
+
+        deleted = await resource_client.delete(
+            f"/api/discovery-schedules/{schedule_id}", headers=headers
+        )
+        assert deleted.status_code == 204
+
+        missing = await resource_client.get(
+            f"/api/discovery-schedules/{schedule_id}", headers=headers
+        )
+        assert missing.status_code == 404
+    finally:
+        await _cleanup(resource_session_factory, org_id)

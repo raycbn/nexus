@@ -46,9 +46,9 @@ class ScheduledDiscoveryHandler:
         schedule = await self._schedules.get_by_id(schedule_id)
         organization_id = UUID(envelope.payload["organization_id"])
         if schedule is None or schedule.organization_id != organization_id:
-            return False
+            return True
         if resource_id != schedule.resource_id or not schedule.enabled:
-            return False
+            return True
         resource = await self._resources.get_resource(
             schedule.organization_id, resource_id, schedule.workspace_id
         )

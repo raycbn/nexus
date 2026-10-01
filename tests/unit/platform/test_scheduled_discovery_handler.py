@@ -83,3 +83,18 @@ async def test_handler_runs_discovery_and_persists_history():
 async def _items(items):
     for item in items:
         yield item
+
+
+@pytest.mark.asyncio
+async def test_handler_treats_missing_schedule_as_stale_success():
+    session = AsyncMock()
+    envelope = JobEnvelope.create(
+        "discovery.scheduled",
+        {"schedule_id": str(uuid4()), "resource_id": str(uuid4()), "organization_id": str(uuid4())},
+        "stale-test",
+    )
+    with patch(
+        "packages.platform.scheduled_discovery_handler.DiscoveryScheduleRepository"
+    ) as schedules:
+        schedules.return_value.get_by_id = AsyncMock(return_value=None)
+        assert await ScheduledDiscoveryHandler(session)(envelope) is True

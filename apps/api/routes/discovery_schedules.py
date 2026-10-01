@@ -7,6 +7,7 @@ from packages.auth import require_permissions
 from packages.domain.models.context import TenantContext
 from packages.persistence.repositories.core import CoreRepository
 from packages.persistence.repositories.discovery_schedule import DiscoveryScheduleRepository
+from packages.persistence.repositories.resource_connections import ResourceConnectionRepository
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,6 +67,19 @@ async def list_schedules(
     return [_dto(item) for item in schedules]
 
 
+@router.get("/{schedule_id}", response_model=DiscoveryScheduleDTO)
+async def get_schedule(
+    schedule_id: UUID,
+    tenant: TenantContext = Depends(require_permissions("discovery.read")),
+    session: AsyncSession = Depends(get_db_session),
+) -> DiscoveryScheduleDTO:
+    schedule = await DiscoveryScheduleRepository(session).get(
+        tenant.organization_id, schedule_id, tenant.workspace_id
+    )
+    if schedule is None:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return _dto(schedule)
+
 @router.post("", response_model=DiscoveryScheduleDTO, status_code=status.HTTP_201_CREATED)
 async def create_schedule(
     payload: DiscoveryScheduleCreateDTO,
@@ -77,6 +91,13 @@ async def create_schedule(
     )
     if resource is None:
         raise HTTPException(status_code=404, detail="Resource not found")
+    if not resource.enabled:
+        raise HTTPException(status_code=409, detail="Resource is disabled")
+    binding = await ResourceConnectionRepository(session).get(
+        tenant.organization_id, payload.resource_id, tenant.workspace_id
+    )
+    if binding is None:
+        raise HTTPException(status_code=409, detail="Resource has no connector binding")
     next_run = _next_run(payload.cron_expression, payload.timezone)
     schedule = await DiscoveryScheduleRepository(session).create(
         tenant.organization_id, tenant.workspace_id, payload.resource_id,
@@ -100,9 +121,24 @@ async def update_schedule(
     values = payload.model_dump(exclude_unset=True)
     cron_expression = values.get("cron_expression", schedule.cron_expression)
     timezone = values.get("timezone", schedule.timezone)
-    if "cron_expression" in values or "timezone" in values:
-        schedule.next_run_at = _next_run(cron_expression, timezone)
     for key, value in values.items():
         setattr(schedule, key, value)
+    if "enabled" in values:
+        schedule.next_run_at = _next_run(cron_expression, timezone) if values["enabled"] else None
+    elif ("cron_expression" in values or "timezone" in values) and schedule.enabled:
+        schedule.next_run_at = _next_run(cron_expression, timezone)
     await session.commit()
     return _dto(schedule)
+
+@router.delete("/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_schedule(
+    schedule_id: UUID,
+    tenant: TenantContext = Depends(require_permissions("discovery.manage")),
+    session: AsyncSession = Depends(get_db_session),
+) -> None:
+    deleted = await DiscoveryScheduleRepository(session).delete(
+        tenant.organization_id, schedule_id, tenant.workspace_id
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    await session.commit()

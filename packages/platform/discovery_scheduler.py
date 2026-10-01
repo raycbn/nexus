@@ -34,7 +34,11 @@ class DiscoveryScheduler:
             schedule.organization_id,
             schedule.workspace_id,
             DISCOVERY_SCHEDULE_JOB,
-            {"schedule_id": str(schedule.id), "resource_id": str(schedule.resource_id)},
+            {
+                "schedule_id": str(schedule.id),
+                "resource_id": str(schedule.resource_id),
+                "organization_id": str(schedule.organization_id),
+            },
             f"discovery-schedule:{schedule.id}:{scheduled_for.isoformat()}",
             max_attempts=3,
         )
@@ -43,3 +47,12 @@ class DiscoveryScheduler:
         schedule.next_run_at = next_run
         await self._session.commit()
         return True
+
+    async def enqueue_due(self, now: datetime | None = None, limit: int = 10) -> int:
+        if limit < 1:
+            return 0
+        current = now or datetime.now(UTC)
+        count = 0
+        while count < limit and await self.enqueue_one_due(current):
+            count += 1
+        return count

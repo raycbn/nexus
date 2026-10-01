@@ -30,31 +30,31 @@ Date: 2026-09-26
 | 🛒 Marketplace catalog | ✅ Completo |
 | 🐳 Self-Hosted Docker | ✅ Verificado |
 
-### 🔵 EN CURSO → SIGUIENTE BLOQUE
+### ✅ BLOQUE CERRADO → SIGUIENTE OBJETIVO
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
-│ 01  🔎 SCHEDULED DISCOVERY API                              │
-│     CRUD · tenant/workspace · persistencia existente        │
+│ 01  ✅ SCHEDULED DISCOVERY API                              │
+│     CRUD · tenant/workspace · contrato API cerrado         │
 └──────────────────────────────┬───────────────────────────────┘
                                ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 02  🖥️ SCHEDULED DISCOVERY FRONTEND                        │
-│     Crear · editar · activar · desactivar · consultar       │
+│ 02  ✅ SCHEDULED DISCOVERY FRONTEND                        │
+│     Crear · editar · activar · desactivar · consultar      │
 └──────────────────────────────┬───────────────────────────────┘
                                ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 03  ⚙️ SCHEDULER / WORKER                                   │
+│ 03  ✅ SCHEDULER / WORKER                                   │
 │     Due schedules · jobs · correlación · next run           │
 └──────────────────────────────┬───────────────────────────────┘
                                ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 04  🛡️ DISCOVERY RELIABILITY                                │
-│     Retries · stale recovery · idempotencia · auditoría      │
+│ 04  🟡 DISCOVERY RELIABILITY                                │
+│     Retries · stale recovery · idempotencia · auditoría     │
 └──────────────────────────────┬───────────────────────────────┘
                                ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 05  👥 TEAMS / MEMBERSHIPS / INVITATIONS                    │
+│ 05  🚦 TEAMS / MEMBERSHIPS / INVITATIONS                    │
 │     Organización · miembros · invitaciones                  │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -76,9 +76,9 @@ Date: 2026-09-26
 
 ### 🚦 PRÓXIMO MOVIMIENTO
 
-> **01 — Scheduled Discovery API**
+> **05 — Teams / Memberships / Invitations**
 >
-> No saltamos todavía al scheduler. Primero cerramos el contrato CRUD, lo probamos y conectamos después el frontend.
+> Scheduled Discovery queda cerrado hasta el nivel validado. El siguiente bloque es la administración de organizaciones, miembros e invitaciones.
 ## Executive finding
 
 NEXUS has a working autonomous AIOps core: investigation, evidence, validation, incidents, policy, remediation, durable jobs, workers, real lab writes and verification.
@@ -628,3 +628,35 @@ Operational rule:
 14. API / Marketplace maturation: webhooks, idempotency, service identities, signed connector packages and compatibility/release process.
 
 Delivery rule remains unchanged: one small logical block at a time; backend contract, frontend surface and tests ship together whenever the capability is user-facing.
+
+
+## 2026-10-01 - Scheduled Discovery complete checkpoint
+
+Closed the Scheduled Discovery execution block through real Docker and laboratory verification.
+
+Completed:
+- Tenant/workspace-scoped schedule detail and delete API.
+- Schedule creation requires an enabled resource with a connector binding.
+- Schedule update supports cron/timezone changes and correct enable/disable next-run lifecycle.
+- Frontend supports create, edit, enable/disable, delete, refresh, loading, empty and error states.
+- Scheduler supports bounded batch enqueue and carries organization context in the job payload.
+- Dedicated Scheduled Discovery worker uses an isolated Redis stream/group and durable job infrastructure.
+- Stale, deleted or disabled schedule jobs are treated as successful no-ops instead of being retried indefinitely.
+- Scheduled discovery handler performs real connector discovery and persists discovery runs.
+- Docker Self-Hosted includes the dedicated `scheduled-discovery` service.
+
+Validation:
+- Backend: 741 passed, 1 skipped, 38 deselected.
+- Ruff across apps/packages/tests: clean.
+- Frontend: 18 passed, lint clean, production build successful.
+- Real E2E: an overdue lab schedule was automatically enqueued, executed and completed through the Linux lab connector; job completed in one attempt and the discovery run completed with one discovered resource.
+- Test data was fully removed after validation.
+- `http://localhost:3000` and `http://localhost:8088` remain operational and use the same API/database.
+- `sqlserver-lab-myridian-lab` / port 1433 was not touched.
+
+Roadmap position:
+- 01 Scheduled Discovery API - COMPLETE
+- 02 Scheduled Discovery frontend - COMPLETE
+- 03 Scheduler / Worker execution - COMPLETE
+- 04 Discovery reliability - IN PROGRESS; the current foundation includes retries, stale-job handling, idempotency and durable execution, while broader recovery/DR work remains later in the roadmap.
+- 05 Teams / Memberships / Invitations - NEXT

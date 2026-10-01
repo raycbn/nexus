@@ -134,6 +134,8 @@ class ApiClient {
   async getDiscoveryHistory(id: string) { return this.request(`/resources/${id}/discovery-history`); }
   async getDiscoverySchedules() { return this.request('/discovery-schedules'); }
   async createDiscoverySchedule(data: object) { return this.request('/discovery-schedules', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateDiscoverySchedule(id: string, data: object) { return this.request(`/discovery-schedules/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }); }
+  async deleteDiscoverySchedule(id: string) { return this.request<void>(`/discovery-schedules/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
 
   async getSessions() { return this.request('/auth/sessions'); }
   async revokeSession(id: string) { return this.request(`/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); }

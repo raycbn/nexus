@@ -64,6 +64,16 @@ class DiscoveryScheduleRepository:
         schedule = (await self._session.execute(stmt)).scalar_one_or_none()
         return schedule
 
+    async def delete(
+        self, organization_id: UUID, schedule_id: UUID, workspace_id: UUID | None
+    ) -> bool:
+        schedule = await self.get(organization_id, schedule_id, workspace_id)
+        if schedule is None:
+            return False
+        await self._session.delete(schedule)
+        await self._session.flush()
+        return True
+
     async def get_by_id(self, schedule_id: UUID) -> DiscoveryScheduleModel | None:
         stmt = select(DiscoveryScheduleModel).where(DiscoveryScheduleModel.id == schedule_id)
         return (await self._session.execute(stmt)).scalar_one_or_none()
