@@ -23,4 +23,7 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+node_modules/
+.kilo/
+client_head_backup.txt
 .pylintrc
