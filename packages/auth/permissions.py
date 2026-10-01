@@ -26,6 +26,7 @@ PERMISSIONS = (
     "metering.manage",
     "billing.read",
     "billing.manage",
+    "api_keys.read",
     "api_keys.manage",
 )
 
