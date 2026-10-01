@@ -37,6 +37,7 @@ services:
       APP_ENVIRONMENT: ${APP_ENVIRONMENT:-self-hosted}
       APP_DEBUG: ${APP_DEBUG:-false}
       AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      AUTO_BOOTSTRAP: ${AUTO_BOOTSTRAP:-false}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
