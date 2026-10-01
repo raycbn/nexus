@@ -510,3 +510,44 @@ Validation:
 - SQL Server lab container `sqlserver-lab-myridian-lab` / port 1433 was not touched.
 
 Next: return to Self-hosted and complete the remaining Docker end-to-end verification.
+
+## 2026-10-01 — Stability / Self-Hosted checkpoint
+
+The roadmap is now resumed from the actual repository state rather than the older checkpoint text above.
+
+Completed since the last documented checkpoint:
+- Public API v1, API key management, Python SDK, TypeScript SDK and Marketplace catalog remain complete and validated.
+- Self-hosted Docker stack is operational with PostgreSQL, Redis, API and web services.
+- Self-hosted API readiness and web health endpoints are healthy.
+- Self-hosted setup flow is operational and local bootstrap now creates the development administrator when enabled.
+- Frontend development server is available at `http://localhost:3000` with `/api` proxied to the Self-Hosted web gateway at `http://localhost:8088`.
+- Self-Hosted web runtime is available at `http://localhost:8088` and proxies `/api/` to the internal API service.
+- Both frontend entry points therefore use the same API and persistence layer; they are not separate NEXUS installations.
+- Login/setup routing was verified across both `3000` and `8088` after aligning the development proxy and Docker bootstrap configuration.
+- Frontend: 18 tests passed, lint passed, production build passed.
+- Backend baseline remains 730 passed, 1 skipped, 38 deselected; Ruff remains clean.
+- `sqlserver-lab-myridian-lab` / port 1433 remains protected and untouched.
+
+Operational rule:
+- `3000` = development workflow with Vite/HMR.
+- `8088` = Self-Hosted runtime verification / production-like local workflow.
+- Both may run simultaneously and intentionally share the same NEXUS backend/database.
+
+## Current roadmap — next execution order
+
+1. Scheduled Discovery API: complete tenant/workspace-scoped CRUD on top of the existing persistence foundation.
+2. Scheduled Discovery frontend: create, edit, enable/disable and inspect schedules through the UI.
+3. Scheduler/worker execution: due schedules, durable job correlation, success/failure state and next-run calculation.
+4. Discovery reliability: retries, stale recovery, idempotency, audit events and operational visibility.
+5. Teams / memberships / invitations: finish the organization administration lifecycle and align frontend/backend contracts.
+6. Fine-grained RBAC: enforce permission requirements consistently across policy, API and UI.
+7. Credential Vault lifecycle: rotation/revoke/access audit hardening and connection-test workflows.
+8. SSO hardening: complete OIDC/SAML callback URLs, tenant configuration and end-to-end validation before claiming SSO complete.
+9. Integrations and alert ingestion: webhooks plus operational notification lifecycle.
+10. Autonomous governance: policy editor, approval chains, maintenance windows, blast-radius controls and true rollback.
+11. Reliability / recovery: backups, restore drills, outbox/DLQ operations and disaster-recovery validation.
+12. Production/self-hosted hardening: upgrades, backup/restore UX, TLS/security headers, licensing/update path and release packaging.
+13. Usage / billing / SaaS control plane: entitlements, metering, subscriptions and tenant administration.
+14. API / Marketplace maturation: webhooks, idempotency, service identities, signed connector packages and compatibility/release process.
+
+Delivery rule remains unchanged: one small logical block at a time; backend contract, frontend surface and tests ship together whenever the capability is user-facing.
