@@ -31,6 +31,9 @@ import { BillingPage } from './pages/Billing';
 import { DeveloperApiPage } from './pages/DeveloperApi';
 import { MarketplacePage } from './pages/Marketplace';
 import { AIOperationsPage } from './pages/AIOperations';
+import { AISettingsPage } from './pages/AISettings';
+import { AutonomousGovernancePage } from './pages/AutonomousGovernance';
+import { RecoveryPage } from './pages/Recovery';
 
 export function App() {
   return <Routes>
@@ -48,6 +51,9 @@ export function App() {
       <Route path="resources/topology" element={<ResourceTopologyPage />} /><Route path="resources/:resourceId" element={<ResourcesPage />} />
       <Route path="agents" element={<AgentsPage />} /><Route path="agents/:agentId" element={<AgentsPage />} />
       <Route path="audit" element={<AuditPage />} /><Route path="settings" element={<SettingsPage />} />
+      <Route path="settings/ai" element={<AISettingsPage />} />
+      <Route path="settings/governance" element={<AutonomousGovernancePage />} />
+      <Route path="settings/recovery" element={<RecoveryPage />} />
       <Route path="connectors" element={<ConnectorsPage />} /><Route path="credentials" element={<CredentialsPage />} />
       <Route path="credentials/:credentialId" element={<CredentialsPage />} /><Route path="remediations" element={<RemediationsPage />} />
       <Route path="jobs/:jobId" element={<JobStatusPage />} /><Route path="discovery-schedules" element={<DiscoverySchedulesPage />} />

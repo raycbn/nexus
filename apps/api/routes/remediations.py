@@ -12,6 +12,8 @@ from packages.persistence.repositories.core import CoreRepository
 from packages.persistence.repositories.incident import IncidentPostgresRepository
 from packages.persistence.repositories.investigation import InvestigationPostgresRepository
 from packages.persistence.repositories.remediation import RemediationActionRepository
+from packages.persistence.repositories.remediation_approval import RemediationApprovalRepository
+from packages.persistence.repositories.remediation_attempt import RemediationAttemptRepository
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -468,20 +470,26 @@ async def autonomous_preflight(
         blockers.append("incident_resolved")
     if incident and incident.investigation_id != action.investigation_id:
         blockers.append("incident_mismatch")
-    from packages.domain.models.enums import RiskLevel
-    from packages.domain.models.policy import Policy
+    from packages.policies.governance import GovernanceConfig, from_model
 
-    policy = (
-        Policy(
-            organization_id=action.organization_id,
-            name="runtime-autonomous-lab",
-            max_risk_level=RiskLevel.HIGH,
-            allow_autonomous_high_risk=True,
-            allowed_resource_ids=[action.resource_id],
-        )
-        if agent and resource
-        else None
+    governance_model = await __import__(
+        "packages.persistence.repositories.autonomous_governance",
+        fromlist=["AutonomousGovernanceRepository"],
+    ).AutonomousGovernanceRepository(session).get(
+        tenant.organization_id, tenant.workspace_id
     )
+    governance = from_model(governance_model) if governance_model else GovernanceConfig()
+    if resource:
+        blockers.extend(
+            governance.check(
+                resource_id=resource.id,
+                action_type=action.action_type,
+                risk_level=action.risk_level,
+            )
+        )
+    if governance.approval_chain_user_ids:
+        blockers.append("approval_chain_required")
+    policy = governance.to_policy(action.organization_id) if agent and resource else None
     decision = evaluate_remediation(action, agent, policy) if agent and resource else None
     policy_ok = bool(
         decision and decision.execution_mode == "autonomous" and not decision.requires_approval
@@ -535,8 +543,31 @@ async def execute_autonomous_remediation(
         )
 
     settings = NexusSettings()
-    if not dto.dry_run and not settings.remediation_writes_enabled:
-        raise HTTPException(status_code=409, detail="Real remediation writes are disabled")
+    governance_repo = __import__(
+        "packages.persistence.repositories.autonomous_governance",
+        fromlist=["AutonomousGovernanceRepository"],
+    ).AutonomousGovernanceRepository(session)
+    governance_model = await governance_repo.get(tenant.organization_id, tenant.workspace_id)
+    from packages.policies.governance import GovernanceConfig, from_model
+
+    governance = from_model(governance_model) if governance_model else GovernanceConfig()
+    if not dto.dry_run:
+        governance_blockers = governance.check(
+            resource_id=action.resource_id,
+            action_type=action.action_type,
+            risk_level=action.risk_level,
+        )
+        if governance_blockers:
+            raise HTTPException(
+                409,
+                detail="Autonomous governance blocked: " + ", ".join(governance_blockers),
+            )
+        if governance.approval_chain_user_ids:
+            raise HTTPException(
+                409, detail="Autonomous execution requires the configured approval chain"
+            )
+        if not settings.remediation_writes_enabled:
+            raise HTTPException(status_code=409, detail="Real remediation writes are disabled")
     safety = check_kill_switch(settings)
     if not dto.dry_run and not safety.allowed:
         raise HTTPException(status_code=409, detail=safety.reason or "Remediation is blocked")
@@ -587,6 +618,7 @@ async def execute_autonomous_remediation(
         session,
         max_retries=dto.max_retries,
         dry_run=dto.dry_run,
+        policy_override=governance.to_policy(action.organization_id),
     )
     verified = result.loop.decision == "verified"
     return RemediationExecutionDTO(
@@ -652,9 +684,49 @@ async def approve_remediation(
         raise HTTPException(
             status_code=409, detail="Remediation action is no longer pending approval"
         )
-    updated = await repository.update_status(
-        action.id, tenant.organization_id, RemediationStatus.APPROVED, tenant.workspace_id
+    governance_model = await __import__(
+        "packages.persistence.repositories.autonomous_governance",
+        fromlist=["AutonomousGovernanceRepository"],
+    ).AutonomousGovernanceRepository(session).get(
+        tenant.organization_id, tenant.workspace_id
     )
+    governance_chain = tuple(
+        __import__("packages.policies.governance", fromlist=["from_model"])
+        .from_model(governance_model).approval_chain_user_ids
+        if governance_model
+        else ()
+    )
+    approval_repo = RemediationApprovalRepository(session)
+    approvals = await approval_repo.list_for_action(
+        action.id, tenant.organization_id, tenant.workspace_id
+    )
+    if governance_chain:
+        expected_step = len(approvals)
+        if expected_step >= len(governance_chain):
+            raise HTTPException(409, "Remediation approval chain is already complete")
+        expected_approver = governance_chain[expected_step]
+        if principal.user_id != expected_approver:
+            raise HTTPException(
+                409,
+                f"Approval step {expected_step + 1} is assigned to a different approver",
+            )
+        await approval_repo.create(
+            action.id,
+            tenant.organization_id,
+            tenant.workspace_id,
+            expected_step,
+            principal.user_id,
+        )
+        if expected_step + 1 < len(governance_chain):
+            updated = action
+        else:
+            updated = await repository.update_status(
+                action.id, tenant.organization_id, RemediationStatus.APPROVED, tenant.workspace_id
+            )
+    else:
+        updated = await repository.update_status(
+            action.id, tenant.organization_id, RemediationStatus.APPROVED, tenant.workspace_id
+        )
     investigation_repo = InvestigationPostgresRepository(session)
     await AuditEventRepository(session).create(
         AuditEvent(
@@ -685,3 +757,155 @@ async def approve_remediation(
     )
     await session.commit()
     return _to_dto(updated)
+
+
+@router.get("/{action_id}/approvals")
+async def list_remediation_approvals(
+    action_id: UUID,
+    tenant: TenantContextDep,
+    _authorized: TenantContext = Depends(require_permissions("remediation.read")),
+    session: Annotated[AsyncSession, Depends(get_db_session)] = None,
+):
+    action = await RemediationActionRepository(session).get(
+        action_id, tenant.organization_id, tenant.workspace_id
+    )
+    if action is None:
+        raise HTTPException(status_code=404, detail="Remediation action not found")
+    governance_model = await __import__(
+        "packages.persistence.repositories.autonomous_governance",
+        fromlist=["AutonomousGovernanceRepository"],
+    ).AutonomousGovernanceRepository(session).get(
+        tenant.organization_id, tenant.workspace_id
+    )
+    chain = (
+        __import__("packages.policies.governance", fromlist=["from_model"])
+        .from_model(governance_model).approval_chain_user_ids
+        if governance_model
+        else ()
+    )
+    approvals = await RemediationApprovalRepository(session).list_for_action(
+        action_id, tenant.organization_id, tenant.workspace_id
+    )
+    approved_by_step = {item.step: item.approver_user_id for item in approvals}
+    return {
+        "chain": [
+            {"step": index + 1, "user_id": user_id, "approved": index in approved_by_step}
+            for index, user_id in enumerate(chain)
+        ],
+        "completed": bool(chain) and len(approvals) == len(chain),
+        "approval_count": len(approvals),
+    }
+
+
+class RemediationRollbackDTO(BaseModel):
+    action_id: UUID
+    accepted: bool
+    restored_state: str
+    message: str
+
+
+@router.post("/{action_id}/rollback", response_model=RemediationRollbackDTO)
+async def rollback_remediation(
+    action_id: UUID,
+    tenant: TenantContextDep,
+    principal=Depends(get_current_principal),
+    _authorized: TenantContext = Depends(require_permissions("remediation.manage")),
+    session: Annotated[AsyncSession, Depends(get_db_session)] = None,
+):
+    from json import loads
+
+    from packages.connectors.base.models import WriteAction
+    from packages.connectors.factory import create_connector
+    from packages.domain.config import NexusSettings
+    from packages.remediation.autonomous_service import _read_service_status
+    from packages.remediation.safety import check_kill_switch
+
+    repository = RemediationActionRepository(session)
+    action = await repository.get(action_id, tenant.organization_id, tenant.workspace_id)
+    if action is None:
+        raise HTTPException(404, "Remediation action not found")
+    if action.status != RemediationStatus.VERIFIED:
+        raise HTTPException(409, "Only verified remediation actions can be rolled back")
+    settings = NexusSettings()
+    if not settings.remediation_writes_enabled:
+        raise HTTPException(409, "Remediation writes are disabled")
+    safety = check_kill_switch(settings)
+    if not safety.allowed:
+        raise HTTPException(409, safety.reason or "Remediation is blocked")
+    resource = await CoreRepository(session).get_resource(
+        tenant.organization_id, action.resource_id, tenant.workspace_id
+    )
+    if resource is None:
+        raise HTTPException(404, "Resource not found")
+    if resource.environment != "lab" or action.connector_key != "linux":
+        raise HTTPException(409, "Rollback is restricted to lab Linux resources")
+
+    attempts = await RemediationAttemptRepository(session).list_for_action(
+        action_id, tenant.organization_id, tenant.workspace_id
+    )
+    pre_state = None
+    for attempt in reversed(attempts):
+        try:
+            evidence = loads(attempt.evidence or "{}")
+        except ValueError:
+            evidence = {}
+        if evidence.get("pre_state") in {"active", "inactive"}:
+            pre_state = evidence["pre_state"]
+            break
+    if pre_state is None:
+        raise HTTPException(409, "No safely restorable pre-remediation state was recorded")
+
+    connector = create_connector(resource)
+    await connector.connect(resource)
+    try:
+        result = await connector.execute_write(
+            resource,
+            WriteAction(
+                action_type="restore_service_state",
+                parameters={
+                    "service": action.command_preview.rsplit(" ", 1)[-1],
+                    "desired_state": pre_state,
+                },
+            ),
+        )
+        if not result.success:
+            raise HTTPException(409, result.error or "Rollback execution failed")
+        restored = await _read_service_status(
+            connector, resource, action.command_preview.rsplit(" ", 1)[-1]
+        )
+    finally:
+        await connector.disconnect(resource)
+    expected = "active" if pre_state == "active" else "inactive"
+    if restored != expected:
+        raise HTTPException(
+            409, f"Rollback command completed but state is {restored!r}, expected {expected!r}"
+        )
+
+    updated = await repository.update_status(
+        action.id, tenant.organization_id, RemediationStatus.ROLLED_BACK, tenant.workspace_id
+    )
+    await AuditEventRepository(session).create(
+        AuditEvent(
+            organization_id=tenant.organization_id,
+            workspace_id=tenant.workspace_id,
+            actor_type=ActorType.USER,
+            actor_id=principal.user_id,
+            event_type=EventType.REMEDIATION_ROLLED_BACK,
+            resource_id=resource.id,
+            action="remediation.rollback",
+            result_status=ResultStatus.SUCCESS,
+            metadata={
+                "action_id": str(action.id),
+                "restored_state": restored,
+                "pre_state": pre_state,
+            },
+        ),
+        incident_id=action.investigation_id,
+    )
+    await session.commit()
+    return RemediationRollbackDTO(
+        action_id=updated.id,
+        accepted=True,
+        restored_state=restored,
+        message="Remediation state restored and rollback recorded",
+    )

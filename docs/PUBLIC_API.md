@@ -8,6 +8,7 @@ Authentication uses the `X-API-Key` header. API keys are tenant-scoped, stored h
 
 - `GET /resources` — list resources visible to the organization.
 - `GET /incidents` — list incidents visible to the organization.
+- `POST /alerts` — ingest a normalized alert through a scoped integration API key.
 
 ## API key management
 
@@ -17,6 +18,7 @@ Supported public scopes:
 
 - `resources.read`
 - `incidents.read`
+- `alerts.ingest`
 
 The secret value is returned only once at creation time and is never returned by list/get operations.
 
@@ -30,3 +32,10 @@ The SDKs target the same v1 contract and do not contain tenant credentials.
 ## Marketplace
 
 The Marketplace exposes the built-in Public API and SDK entries through `/api/marketplace/catalog`.
+
+
+## Alert ingestion idempotency
+
+`POST /alerts` accepts an optional `Idempotency-Key` header. A repeated request with the same key and payload returns the previously stored response; reusing the key with a different payload returns HTTP 409.
+
+The Python SDK exposes `NexusClient.ingest_alert(..., idempotency_key=...)`. The TypeScript SDK exposes `NexusClient.ingestAlert(..., idempotencyKey)`.

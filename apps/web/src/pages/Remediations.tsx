@@ -14,6 +14,8 @@ import {
   useRejectRemediation,
   useExecuteRemediation,
   useSimulateRemediation,
+  useRemediationApprovals,
+  useRollbackRemediation,
 } from '../hooks/useApi';
 
 const statusClass = (status: string) => {
@@ -37,9 +39,11 @@ export function RemediationsPage() {
   const reject = useRejectRemediation();
   const execute = useExecuteRemediation();
   const simulate = useSimulateRemediation();
+  const rollback = useRollbackRemediation();
 
   const actions = actionsQuery.data ?? [];
   const selected = actions.find((item) => item.id === selectedId) ?? actions[0] ?? null;
+  const approvalsQuery = useRemediationApprovals(selected?.id ?? '');
   const linkedIncident = useMemo(
     () => incidentsQuery.data?.incidents.find((item) => item.investigation_id === selected?.investigation_id),
     [incidentsQuery.data, selected],
@@ -119,9 +123,11 @@ export function RemediationsPage() {
                   <button onClick={() => void run(() => reject.mutateAsync(selected.id), 'Action rejected.')} className="inline-flex items-center gap-2 rounded-lg border border-nexus-border px-3 py-2 text-sm text-nexus-text"><X className="h-4 w-4" />Reject</button>
                 </>}
                 {(selected.status === 'proposed' || selected.status === 'approved') && <button onClick={() => void run(() => simulate.mutateAsync(selected.id), 'Simulation completed.')} className="inline-flex items-center gap-2 rounded-lg border border-nexus-primary px-3 py-2 text-sm text-nexus-text"><FlaskConical className="h-4 w-4" />Simulate</button>}
+                {selected.status === 'verified' && <button onClick={() => void run(() => rollback.mutateAsync(selected.id), 'Rollback completed and state restored.')} className="inline-flex items-center gap-2 rounded-lg border border-orange-500 px-3 py-2 text-sm text-nexus-text"><RefreshCw className="h-4 w-4" />Rollback</button>}
                 {selected.status === 'approved' && <button disabled={Boolean(safety.data?.kill_switch_enabled || safety.data?.writes_enabled === false)} onClick={() => void run(() => execute.mutateAsync(selected.id), 'Execution completed.')} className="inline-flex items-center gap-2 rounded-lg border border-red-500 px-3 py-2 text-sm text-nexus-text disabled:opacity-50"><Play className="h-4 w-4" />Execute</button>}
               </div>
-              {linkedIncident && <p className="text-xs text-nexus-textMuted">Linked incident: {linkedIncident.title}</p>}              <div className="pt-4 border-t border-nexus-border space-y-3">
+              {linkedIncident && <p className="text-xs text-nexus-textMuted">Linked incident: {linkedIncident.title}</p>}
+              {!!approvalsQuery.data?.chain?.length && <div className="rounded-lg border border-nexus-border p-3"><p className="text-xs font-medium text-nexus-text mb-2">Approval chain</p><div className="flex flex-wrap gap-2">{approvalsQuery.data.chain.map((item: { step: number; user_id: string; approved: boolean }) => <span key={item.step} className="rounded-full border border-nexus-border px-2 py-1 text-xs text-nexus-textMuted">Step {item.step}: {item.approved ? 'approved' : 'pending'}</span>)}</div></div>}              <div className="pt-4 border-t border-nexus-border space-y-3">
                 <div className="flex items-center justify-between"><h3 className="font-medium text-nexus-text">Autonomous preflight</h3><Badge variant="default">Lab gated</Badge></div>
                 <select value={agentId} onChange={(event) => setAgentId(event.target.value)} className="w-full rounded-lg border border-nexus-border bg-nexus-surface px-3 py-2 text-sm text-nexus-text">
                   <option value="">Select autonomous agent</option>

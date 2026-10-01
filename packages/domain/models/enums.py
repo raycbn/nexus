@@ -80,6 +80,7 @@ class EventType(StrEnum):
     REMEDIATION_PROPOSED = "remediation_proposed"
     REMEDIATION_APPROVED = "remediation_approved"
     REMEDIATION_REJECTED = "remediation_rejected"
+    REMEDIATION_ROLLED_BACK = "remediation_rolled_back"
 
 
 class ResultStatus(StrEnum):

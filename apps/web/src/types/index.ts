@@ -16,6 +16,10 @@ export type SeverityLabel = {
   [key in Severity]: string;
 };
 
+export * from './ai';
+export * from './governance';
+export * from './recovery';
+
 export interface IncidentSummaryDTO {
   id: string;
   title: string;

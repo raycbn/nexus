@@ -50,9 +50,9 @@ All connectors implement a common interface defined in `packages/connectors/base
 
 ## Release readiness
 
-The current development baseline includes multi-tenancy, RBAC, authentication/MFA, resources, connectors, credentials, investigations, incidents, governed remediation, scheduled discovery, public API keys, SSO, billing/metering and the Autonomous Resolution UI.
+The current `0.3.0` baseline includes multi-tenancy, RBAC, authentication/MFA, resources, connectors, credentials, investigations, incidents, governed remediation, scheduled discovery, public API keys, hardened SSO, billing/metering, AI provider routing and the Autonomous Governance/Recovery surfaces.
 
-The remaining v1 release gates are documented in `docs/V1_RELEASE_READINESS.md`. The key public-release items are a reproducible Self-Hosted release, explicit AI/Ollama deployment support, a clean-machine end-to-end smoke test, general CI and production exposure/backup documentation.
+The repository now includes a reproducible release preflight, GitHub release workflow, Self-Hosted security hardening, encrypted DR tooling, DLQ recovery controls, usage quotas, idempotent alert ingestion and API/SDK/Marketplace contract metadata. Deployment-specific gates such as clean-machine smoke testing and real external IdP/Stripe/third-party integrations remain environment-dependent.
 
 ## Technology Stack
 
@@ -85,7 +85,7 @@ docker compose ps
 
 Then open `http://localhost:8080` and complete the NEXUS setup wizard.
 
-The current Compose stack contains PostgreSQL, Redis, the API, scheduled discovery worker and frontend. **Ollama is not bundled yet**, so AI investigations require a reachable Ollama instance until the release packaging adds an explicit AI runtime option.
+The current Compose stack includes PostgreSQL, Redis, the API, scheduled discovery worker, frontend and a bundled Ollama AI runtime. The default Self-Hosted installation automatically pulls the NEXUS-tested `hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M` model into a persistent Docker volume.
 
 For deployment and upgrade guidance see `docs/SELF_HOSTED.md`. For the v1 gate list see `docs/V1_RELEASE_READINESS.md`.
 
@@ -110,3 +110,21 @@ nexus/
 ├── scripts/             # Utility scripts
 └── .github/             # CI/CD workflows
 ```
+
+
+## Current release — 0.3.0
+
+The 0.3.0 baseline keeps backend and frontend capabilities synchronized. The release includes AI provider routing and task policies, hardened OIDC/SAML callbacks, scoped alert ingestion with idempotency, workspace-scoped autonomous governance, verified lab rollback, durable-queue recovery controls, Self-Hosted deployment hardening, usage quotas, and a versioned release preflight.
+
+### Operational surfaces
+
+- `/settings/ai` — providers, models and per-task routing.
+- `/settings/governance` — autonomous policy, approval chains, resource/risk limits and maintenance windows.
+- `/settings/recovery` — durable queue and DLQ visibility/requeue for authorized operators.
+- `/metering` — usage, plan quota and billing-ready events.
+- `/developer-api` — tenant-scoped API keys, including optional alert-ingestion scope.
+- `/marketplace` — API/SDK catalog with compatibility and integrity metadata.
+
+### Release validation
+
+Run `python scripts/release/validate.py`, backend Ruff/tests, frontend test/lint/build and the GitHub release workflow before publishing a version tag. The release workflow is defined in `.github/workflows/release.yml`.

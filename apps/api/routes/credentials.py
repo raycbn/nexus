@@ -109,7 +109,7 @@ async def create_credential(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> CredentialDTO:
     allowed_types = {
-        "ssh_key", "username_password", "token", "certificate", "kubeconfig",
+        "ssh_key", "username_password", "token", "api_key", "certificate", "kubeconfig",
         "aws_access_key", "azure_service_principal", "gcp_service_account",
     }
     if payload.credential_type not in allowed_types:

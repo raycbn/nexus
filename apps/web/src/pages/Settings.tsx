@@ -1,9 +1,11 @@
+import { Bot } from 'lucide-react';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Globe, Info, KeyRound, Server, Shield, Users, Workflow } from 'lucide-react';
 import { cn } from '../utils/helpers';
 import { useAuth } from '../auth/AuthProvider';
-import { useAgents, useConnectors, useRemediationSafety, useResources } from '../hooks/useApi';
+import { useAgents, useConnectors, useRemediationSafety, useResources, useSystemVersion } from '../hooks/useApi';
+import { Link } from 'react-router-dom';
 
 function ConfigSection({ title, icon: Icon, children }: { title: string; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode }) {
   return (
@@ -46,6 +48,7 @@ export function SettingsPage() {
   const safety = useRemediationSafety();
   const environment = import.meta.env.MODE;
   const apiBase = import.meta.env.VITE_API_BASE || '/api';
+  const systemVersion = useSystemVersion();
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -102,6 +105,26 @@ export function SettingsPage() {
             ))}
           </div>
         )}
+      </ConfigSection>
+
+      <ConfigSection title="AI configuration" icon={Bot}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-nexus-text">Providers, models and task policies</p>
+            <p className="mt-1 text-xs text-nexus-textMuted">Configure primary, fallback, local AI and per-task routing.</p>
+          </div>
+          <div className="flex gap-2">
+            <Link to="/settings/ai" className="rounded-lg bg-nexus-primary px-3 py-2 text-sm font-medium text-white">AI settings</Link>
+            <Link to="/settings/governance" className="rounded-lg border border-nexus-border px-3 py-2 text-sm font-medium text-nexus-text">Autonomous governance</Link>
+            <Link to="/settings/recovery" className="rounded-lg border border-nexus-border px-3 py-2 text-sm font-medium text-nexus-text">Recovery</Link>
+          </div>
+        </div>
+      </ConfigSection>
+
+      <ConfigSection title="Deployment" icon={Server}>
+        <ConfigRow label="NEXUS version" value={systemVersion.data?.version || 'Loading…'} status={systemVersion.data ? 'success' : 'info'} statusLabel={systemVersion.data ? systemVersion.data.environment : 'Checking'} />
+        <ConfigRow label="API readiness" value="/ready" status="info" statusLabel="Health endpoint" />
+        <ConfigRow label="Recovery console" value="Settings → Recovery" status="info" statusLabel="Available" />
       </ConfigSection>
 
       <ConfigSection title="Product information" icon={Info}>

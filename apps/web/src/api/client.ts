@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { InvestigationCreateDTO, ResourceCreateDTO, ResourceUpdateDTO } from '../types';
+import type { AIModelProfileDTO, AISettingsDTO, AutonomousGovernanceDTO, RecoveryStatusDTO, InvestigationCreateDTO, ResourceCreateDTO, ResourceUpdateDTO } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 const AUTH_KEY = 'nexus.auth';
@@ -94,6 +94,15 @@ class ApiClient {
   async getIncidentSuggestion(id: string) { return this.request(`/investigations/${id}/incident/suggestion`); }
   async createIncidentFromInvestigation(id: string, data: Record<string, unknown>) { return this.request(`/investigations/${id}/incident`, { method: 'POST', body: JSON.stringify(data) }); }
 
+  async getAiCatalog() { return this.request<AIModelProfileDTO[]>('/ai/catalog'); }
+  async getAiSettings() { return this.request<AISettingsDTO>('/ai/settings'); }
+  async updateAiSettings(data: AISettingsDTO) { return this.request<AISettingsDTO>('/ai/settings', { method: 'PUT', body: JSON.stringify(data) }); }
+  async getAutonomousGovernance() { return this.request<AutonomousGovernanceDTO>('/governance/autonomous'); }
+  async getRecoveryStatus() { return this.request<RecoveryStatusDTO>('/recovery/status'); }
+  async requeueRecoveryDlq() { return this.request<{ moved: number }>('/recovery/dlq/requeue', { method: 'POST' }); }
+  async getSystemVersion() { return this.request<{ version: string; environment: string }>('/system/version'); }
+  async updateAutonomousGovernance(data: AutonomousGovernanceDTO) { return this.request<AutonomousGovernanceDTO>('/governance/autonomous', { method: 'PUT', body: JSON.stringify(data) }); }
+
   async getInvestigations() { return this.request<any[]>('/investigations'); }
   async getInvestigation(id: string) { return this.request(`/investigations/${id}`); }
   async getInvestigationEvents(id: string) { return this.request(`/investigations/${id}/events`); }
@@ -129,6 +138,8 @@ class ApiClient {
   async executeRemediation(id: string) { return this.request(`/remediations/${id}/execute`, { method: 'POST' }); }
   async executeAutonomousRemediation(id: string, data: Record<string, unknown>) { return this.request(`/remediations/${id}/autonomous`, { method: 'POST', body: JSON.stringify(data) }); }
   async simulateRemediation(id: string) { return this.request(`/remediations/${id}/simulate`, { method: 'POST' }); }
+  async getRemediationApprovals(id: string) { return this.request(`/remediations/${id}/approvals`); }
+  async rollbackRemediation(id: string) { return this.request(`/remediations/${id}/rollback`, { method: 'POST' }); }
 
   async getResources() { return this.request('/resources'); }
   async getResource(id: string) { return this.request(`/resources/${id}`); }
@@ -184,6 +195,7 @@ class ApiClient {
   async listAlerts(status?: string) { return this.request(`/alerts${status ? '?status=' + encodeURIComponent(status) : ''}`); }
   async updateAlertStatus(id: string, status: string) { return this.request(`/alerts/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }); }
   async getUsageSummary(days = 30) { return this.request<UsageSummary[]>(`/metering/summary?days=${days}`); }
+  async getUsageQuota() { return this.request<UsageQuota>('/metering/quota'); }
   async listUsageEvents(limit = 50) { return this.request<UsageEvent[]>(`/metering/events?limit=${limit}`); }
   async getBillingPlans() { return this.request<{ key: string; name: string; description: string; monthly_price_cents: number; currency: string; included_units: number }[]>("/billing/plans"); }
   async getBillingSubscription() { return this.request<{ plan: string; status: string; current_period_end: string | null } | null>("/billing/subscription"); }
@@ -193,7 +205,7 @@ class ApiClient {
   async getPublicApiKeys() { return this.request<{ id: string; name: string; key_prefix: string; scopes: string[]; enabled: boolean; expires_at: string | null; last_used_at: string | null; created_at: string }[]>("/public/v1/keys"); }
   async createPublicApiKey(data: { name: string; scopes: string[]; expires_at?: string }) { return this.request<{ id: string; name: string; key_prefix: string; scopes: string[]; api_key: string }>("/public/v1/keys", { method: "POST", body: JSON.stringify(data) }); }
   async revokePublicApiKey(id: string) { return this.request<void>(`/public/v1/keys/${encodeURIComponent(id)}`, { method: "DELETE" }); }
-  async getMarketplaceCatalog() { return this.request<{ slug: string; name: string; version: string; category: string; description: string; publisher: string; status: string; docs_url: string }[]>("/marketplace/catalog"); }
+  async getMarketplaceCatalog() { return this.request<{ slug: string; name: string; version: string; category: string; description: string; publisher: string; status: string; package_type: string; compatibility: string; integrity: string; docs_url: string }[]>("/marketplace/catalog"); }
   async getSSOProviders() { return this.request('/sso/providers'); }
   async createSSOProvider(data: Record<string, unknown>) { return this.request('/sso/providers', { method: 'POST', body: JSON.stringify(data) }); }
   async updateSSOProvider(id: string, data: Record<string, unknown>) { return this.request(`/sso/providers/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
@@ -204,6 +216,7 @@ class ApiClient {
 
 export const api = new ApiClient();
 export type UsageSummary = { metric: string; quantity: number };
+export type UsageQuota = { plan: string; metric: string; used: number; limit: number | null; remaining: number | null; exceeded: boolean };
 export type UsageEvent = {
   id: string;
   metric: string;

@@ -2,7 +2,7 @@
 
 ## Scope
 
-This runbook covers the NEXUS application PostgreSQL database (`nexus-persistence`) and the Redis durable queue (`lab-redis`). It does **not** touch or back up `sqlserver-lab-myridian-lab` / port 1433.
+This runbook covers the NEXUS application PostgreSQL database and Redis durable queue in the Self-Hosted Compose stack. It does **not** touch or back up `sqlserver-lab-myridian-lab` / port 1433.
 
 ## Backup design
 
@@ -44,7 +44,7 @@ Verification checks the encrypted file checksum when a manifest exists, decrypts
 Restore is intentionally gated because it overwrites application state.
 
 1. Stop application writes through the deployment's normal maintenance mechanism.
-2. Confirm the target PostgreSQL container is `nexus-persistence`.
+2. Confirm the target PostgreSQL container matches `NEXUS_POSTGRES_CONTAINER` (default: `nexus-selfhosted-postgres`).
 3. Set `NEXUS_DR_CONFIRM=RESTORE_NEXUS`.
 4. Run:
 
@@ -77,3 +77,13 @@ A backup is not considered production-grade until restoration has been tested. A
 - Store encrypted backups in a separate failure domain.
 - Keep at least one backup immutable/offline where the deployment supports it.
 - Record backup and restore operations in the organization's operational audit system.
+
+
+## Self-Hosted container names
+
+The backup scripts use the current Compose container defaults:
+
+- PostgreSQL: `nexus-selfhosted-postgres`
+- Redis: `nexus-selfhosted-redis`
+
+They can be overridden with `NEXUS_POSTGRES_CONTAINER` and `NEXUS_REDIS_CONTAINER`. The `sqlserver-lab-myridian-lab` container and port 1433 are explicitly outside the NEXUS recovery workflow.

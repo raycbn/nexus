@@ -52,6 +52,21 @@ class DurableJobQueue:
         info = await self.redis.xpending(self.stream, self.group)
         return int(info.get("pending", 0)) if isinstance(info, dict) else int(info[0])
 
+    async def requeue_dlq(self, limit: int = 10) -> int:
+        dlq = f"{self.stream}:dlq"
+        rows = await self.redis.xrange(dlq, min="-", max="+", count=limit)
+        moved = 0
+        for message_id, fields in rows:
+            job = fields.get("job")
+            if not job:
+                continue
+            await self.redis.xadd(
+                self.stream, {"job": job, "requeued_from_dlq": message_id}
+            )
+            await self.redis.xdel(dlq, message_id)
+            moved += 1
+        return moved
+
     async def dead_letter(self, message_id: str, fields: dict, reason: str) -> str:
         return await self.redis.xadd(
             f"{self.stream}:dlq",

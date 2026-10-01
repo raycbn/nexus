@@ -36,12 +36,19 @@ class LabWriteRunner:
     async def run(self, resource: Resource, action: WriteAction) -> WriteResult:
         if resource.environment != "lab":
             return WriteResult(success=False, error="Lab resources only")
-        if action.action_type != "restart_service":
+        if action.action_type not in {"restart_service", "restore_service_state"}:
             return WriteResult(success=False, error="Unsupported lab action")
         service = action.parameters.get("service", "")
         if not service or not service.replace("-", "").replace("_", "").isalnum():
             return WriteResult(success=False, error="Unsafe service name")
-        return await self._command_runner.run_restart_service(service)
+        if action.action_type == "restart_service":
+            return await self._command_runner.run_restart_service(service)
+        desired_state = action.parameters.get("desired_state", "")
+        if desired_state not in {"active", "inactive", "failed"}:
+            return WriteResult(success=False, error="Invalid restore state")
+        if desired_state == "active":
+            return await self._command_runner.run_start_service(service)
+        return await self._command_runner.run_stop_service(service)
 
 
 class ConnectedSSHCommandRunner:
@@ -52,6 +59,24 @@ class ConnectedSSHCommandRunner:
     ):
         self._run_command = run_command
         self._timeout = timeout
+
+    async def run_start_service(self, service: str) -> WriteResult:
+        result = await self._run_command(f"sudo systemctl start -- {service}", self._timeout)
+        return WriteResult(
+            success=result["success"],
+            data=result.get("data"),
+            error=result.get("error"),
+            metadata={"service": service, "transport": "sudo-systemctl-start"},
+        )
+
+    async def run_stop_service(self, service: str) -> WriteResult:
+        result = await self._run_command(f"sudo systemctl stop -- {service}", self._timeout)
+        return WriteResult(
+            success=result["success"],
+            data=result.get("data"),
+            error=result.get("error"),
+            metadata={"service": service, "transport": "sudo-systemctl-stop"},
+        )
 
     async def run_restart_service(self, service: str) -> WriteResult:
         primary = await self._run_command(

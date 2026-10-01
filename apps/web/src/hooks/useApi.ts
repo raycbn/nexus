@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type {
+  AIModelProfileDTO,
+  AISettingsDTO,
+  AutonomousGovernanceDTO,
+  RecoveryStatusDTO,
   IncidentFilterParams,
   IncidentDetailDTO,
   IncidentTimelineEntryDTO,
@@ -29,6 +33,60 @@ import type {
   DiscoveryScheduleUpdateDTO,
   ConnectorDescriptorDTO,
 } from '../types';
+
+export function usePermissions() {
+  return useQuery({
+    queryKey: ['permissions'],
+    queryFn: () => api.getPermissions(),
+  });
+}
+
+export function useAICatalog() {
+  return useQuery({
+    queryKey: ['ai-catalog'],
+    queryFn: () => api.getAiCatalog() as Promise<AIModelProfileDTO[]>,
+  });
+}
+
+export function useAISettings() {
+  return useQuery({
+    queryKey: ['ai-settings'],
+    queryFn: () => api.getAiSettings() as Promise<AISettingsDTO>,
+  });
+}
+
+export function useSystemVersion() {
+  return useQuery({ queryKey: ['system-version'], queryFn: () => api.getSystemVersion() });
+}
+
+export function useRecoveryStatus() {
+  return useQuery({ queryKey: ['recovery-status'], queryFn: () => api.getRecoveryStatus() as Promise<RecoveryStatusDTO>, refetchInterval: 10000 });
+}
+
+export function useAutonomousGovernance() {
+  return useQuery({
+    queryKey: ['autonomous-governance'],
+    queryFn: () => api.getAutonomousGovernance() as Promise<AutonomousGovernanceDTO>,
+  });
+}
+
+export function useUpdateAutonomousGovernance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: AutonomousGovernanceDTO) => api.updateAutonomousGovernance(data),
+    onSuccess: (data) => queryClient.setQueryData(['autonomous-governance'], data),
+  });
+}
+
+export function useUpdateAISettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: AISettingsDTO) => api.updateAiSettings(data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['ai-settings'], data);
+    },
+  });
+}
 
 export function useIncidents(params?: IncidentFilterParams) {
   return useQuery({
@@ -181,6 +239,25 @@ export function useExecuteAutonomousRemediation() {
 export function useSimulateRemediation() {
   return useMutation({
     mutationFn: (id: string) => api.simulateRemediation(id),
+  });
+}
+
+export function useRemediationApprovals(id: string) {
+  return useQuery({
+    queryKey: ['remediation-approvals', id],
+    queryFn: () => api.getRemediationApprovals(id),
+    enabled: !!id,
+  });
+}
+
+export function useRollbackRemediation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.rollbackRemediation(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['remediations'] });
+      queryClient.invalidateQueries({ queryKey: ['remediation-approvals', id] });
+    },
   });
 }
 

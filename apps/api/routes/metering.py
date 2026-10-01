@@ -7,6 +7,7 @@ from packages.auth import require_permissions
 from packages.domain.models.context import TenantContext
 from packages.persistence.repositories.usage import UsageRepository
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.dependencies import get_db_session
@@ -79,3 +80,44 @@ async def list_usage_events(
         tenant.organization_id, tenant.workspace_id, limit
     )
     return [UsageEventDTO.model_validate(event, from_attributes=True) for event in events]
+
+
+class UsageQuotaDTO(BaseModel):
+    plan: str
+    metric: str
+    used: float
+    limit: int | None
+    remaining: float | None
+    exceeded: bool
+
+
+@router.get("/quota", response_model=UsageQuotaDTO)
+async def usage_quota(
+    tenant: Annotated[TenantContext, Depends(require_permissions("metering.read"))],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> UsageQuotaDTO:
+    from packages.persistence.models.billing import BillingPlanModel, BillingSubscriptionModel
+    subscription = (
+        await session.execute(
+            select(BillingSubscriptionModel).where(
+                BillingSubscriptionModel.organization_id == tenant.organization_id
+            )
+        )
+    ).scalar_one_or_none()
+    plan = await session.get(BillingPlanModel, subscription.plan_id) if subscription else None
+    limit = plan.included_units if plan and plan.included_units > 0 else None
+    end = datetime.now(UTC)
+    start = end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    rows = await UsageRepository(session).summary(
+        tenant.organization_id, tenant.workspace_id, start, end
+    )
+    used = next((quantity for metric, quantity in rows if metric == "usage_units"), 0.0)
+    remaining = max(0.0, limit - used) if limit is not None else None
+    return UsageQuotaDTO(
+        plan=plan.key if plan else "unassigned",
+        metric="usage_units",
+        used=used,
+        limit=limit,
+        remaining=remaining,
+        exceeded=limit is not None and used > limit,
+    )

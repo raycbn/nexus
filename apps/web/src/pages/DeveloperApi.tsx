@@ -15,6 +15,7 @@ type ApiKey = {
 export function DeveloperApiPage() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [name, setName] = useState('NEXUS integration');
+  const [ingestAlerts, setIngestAlerts] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -33,8 +34,10 @@ export function DeveloperApiPage() {
   useEffect(() => { void load(); }, []);
 
   const create = async () => {
+    const scopes = ['resources.read', 'incidents.read'];
+    if (ingestAlerts) scopes.push('alerts.ingest');
     const result = await publicApiRequest<ApiKey & { api_key: string }>('/public/v1/keys', {
-      method: 'POST', body: JSON.stringify({ name, scopes: ['resources.read', 'incidents.read'] }),
+      method: 'POST', body: JSON.stringify({ name, scopes }),
     });
     setNewKey(result.api_key);
     await load();
@@ -57,6 +60,10 @@ export function DeveloperApiPage() {
           <input value={name} onChange={(e) => setName(e.target.value)} className="nexus-input flex-1" />
           <button onClick={() => void create()} className="nexus-button-primary"><Plus className="h-4 w-4" />Create</button>
         </div>
+        <label className="flex items-center gap-2 text-sm text-nexus-textMuted">
+          <input type="checkbox" checked={ingestAlerts} onChange={(e) => setIngestAlerts(e.target.checked)} />
+          Allow inbound alert webhooks (alerts.ingest)
+        </label>
         {newKey && <div className="rounded-lg border border-nexus-border p-3"><div className="text-xs text-nexus-textMuted mb-1">Copy this key now. NEXUS will not show it again.</div><code className="break-all text-sm">{newKey}</code><button onClick={() => void navigator.clipboard.writeText(newKey)} className="ml-2"><Copy className="inline h-4 w-4" /></button></div>}
       </div>
       <div className="nexus-card">

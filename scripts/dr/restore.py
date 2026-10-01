@@ -12,7 +12,7 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-POSTGRES_CONTAINER = "nexus-persistence"
+POSTGRES_CONTAINER = os.environ.get("NEXUS_POSTGRES_CONTAINER", "nexus-selfhosted-postgres")
 
 
 def key() -> bytes:

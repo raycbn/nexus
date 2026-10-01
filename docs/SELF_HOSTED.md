@@ -1,6 +1,6 @@
 # NEXUS Self-Hosted
 
-NEXUS currently runs as a five-service Docker Compose deployment: PostgreSQL, Redis, API, scheduled discovery worker and frontend.
+NEXUS currently runs as a seven-service Docker Compose deployment: PostgreSQL, Redis, Ollama, Ollama model initializer, API, scheduled discovery worker and frontend.
 
 ## Requirements
 
@@ -12,6 +12,7 @@ NEXUS currently runs as a five-service Docker Compose deployment: PostgreSQL, Re
 
 At minimum set `SECRET_KEY` and `NEXUS_VAULT_MASTER_KEY` to strong random values.
 Set `ALLOWED_ORIGINS` for the URL where users will access NEXUS when it is not local-only.
+For Enterprise SSO, set `NEXUS_SSO_PUBLIC_BASE_URL` to that same externally reachable browser origin so the IdP callback URL remains stable.
 Do not commit `.env` or secret values.
 
 For the default deployment the frontend is published on `http://localhost:8080`.
@@ -25,7 +26,7 @@ docker compose up -d --build
 
 Wait for the API healthcheck to become healthy, then open the frontend.
 
-The current Compose stack provides the application runtime and scheduled-discovery worker, but it does not bundle Ollama. AI investigations therefore require either an Ollama instance reachable from the API container or a future NEXUS Compose profile that provisions the AI runtime.
+The current Compose stack includes the application runtime, scheduled-discovery worker and a bundled Ollama AI runtime. On first start, `ollama-init` pulls the NEXUS-tested `hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M` model into a persistent Docker volume. The model is downloaded once and retained across restarts/upgrades unless the volume is removed.
 
 ## Verify
 
@@ -62,3 +63,16 @@ Database migrations run automatically when `AUTO_MIGRATE=true`.
 
 Use the NEXUS DR backup tooling documented in `docs/DISASTER_RECOVERY.md` before upgrades.
 Do not delete the PostgreSQL or Redis volumes unless performing an intentional recovery.
+
+
+## Release and recovery operations
+
+The repository ships a versioned source release marker in `VERSION` and a release preflight in `scripts/release/validate.py`. Validate the Compose configuration before publishing a release:
+
+```powershell
+python scripts/release/validate.py
+```
+
+The authenticated Recovery console is available at `/settings/recovery`. It exposes durable queue/DLQ state and a controlled requeue operation for authorized operators. Backup and restore procedures remain in `docs/DISASTER_RECOVERY.md`.
+
+The current release baseline is `0.3.0`. For external exposure, set `NEXUS_SSO_PUBLIC_BASE_URL` and place TLS at the reverse-proxy boundary; the API emits HSTS when traffic is forwarded as HTTPS.

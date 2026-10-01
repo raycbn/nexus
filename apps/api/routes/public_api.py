@@ -9,7 +9,9 @@ from packages.auth import get_current_principal, require_permissions
 from packages.domain.models.identity import AuthenticatedPrincipal
 from packages.persistence.models.core import ResourceModel
 from packages.persistence.models.incident import IncidentModel
+from packages.persistence.repositories.alert import AlertRepository
 from packages.persistence.repositories.api_key import ApiKeyRepository
+from packages.persistence.repositories.idempotency import IdempotencyRepository
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.dependencies import get_db_session
 
 router = APIRouter(prefix="/public/v1", tags=["public-api"])
-PUBLIC_SCOPES = frozenset({"resources.read", "incidents.read"})
+PUBLIC_SCOPES = frozenset({"resources.read", "incidents.read", "alerts.ingest"})
 
 
 class ApiKeyCreateRequest(BaseModel):
@@ -122,6 +124,54 @@ async def public_resources(
         }
         for r in result.scalars().all()
     ]
+
+
+class PublicAlertIngestRequest(BaseModel):
+    source: str = Field(min_length=1, max_length=100)
+    external_id: str | None = Field(default=None, max_length=255)
+    dedup_key: str = Field(min_length=1, max_length=512)
+    correlation_key: str | None = Field(default=None, max_length=512)
+    title: str = Field(min_length=1, max_length=255)
+    message: str = Field(min_length=1, max_length=10000)
+    severity: str = Field(pattern="^(low|medium|high|critical)$")
+
+
+@router.post("/alerts", status_code=201)
+async def public_alert_ingest(
+    dto: PublicAlertIngestRequest,
+    context: Annotated[tuple[UUID, frozenset[str]], Depends(_api_key_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, object]:
+    organization_id = _require_scope(context, "alerts.ingest")
+    if idempotency_key:
+        key = idempotency_key.strip()
+        request_hash = hashlib.sha256(dto.model_dump_json(sort_keys=True).encode()).hexdigest()
+        existing = await IdempotencyRepository(session).get(organization_id, key)
+        if existing:
+            if existing.request_hash != request_hash:
+                raise HTTPException(
+                    409,
+                    detail="Idempotency-Key was already used for a different request",
+                )
+            return existing.response
+    alert = await AlertRepository(session).ingest(
+        organization_id, None, **dto.model_dump()
+    )
+    response = {
+        "id": str(alert.id),
+        "source": alert.source,
+        "dedup_key": alert.dedup_key,
+        "status": alert.status,
+        "occurrence_count": alert.occurrence_count,
+        "last_seen_at": alert.last_seen_at.isoformat(),
+    }
+    if idempotency_key:
+        await IdempotencyRepository(session).create(
+            organization_id, idempotency_key.strip(), request_hash, response
+        )
+    await session.commit()
+    return response
 
 
 @router.get("/incidents")

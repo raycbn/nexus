@@ -16,6 +16,10 @@ class NexusSettings(BaseSettings):
     auto_migrate: bool = True
     auto_bootstrap: bool = False
     allowed_origins: str = "http://localhost:3000"
+    sso_public_base_url: str = ""
+    nexus_version: str = "0.3.0"
+    postgres_container: str = "nexus-selfhosted-postgres"
+    redis_container: str = "nexus-selfhosted-redis"
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None
     billing_success_url: str = "http://localhost:3000/billing?success=1"

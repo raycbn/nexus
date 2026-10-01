@@ -1,5 +1,6 @@
 import secrets
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlencode, urlparse
 from uuid import UUID, uuid4
 
 import httpx
@@ -46,6 +47,19 @@ def _provider(p: SSOProviderModel) -> dict:
         "entity_id": p.entity_id,
         "attribute_mapping": p.attribute_mapping,
     }
+
+
+def _sso_public_base_url() -> str:
+    settings = get_settings()
+    base = settings.sso_public_base_url.strip() or settings.allowed_origins_list[0]
+    parsed = urlparse(base)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.path not in {"", "/"}:
+        raise HTTPException(500, "Invalid SSO public base URL configuration")
+    return base.rstrip("/")
+
+
+def _callback_uri(provider_id: UUID, protocol: str) -> str:
+    return f"{_sso_public_base_url()}/api/sso/{provider_id}/{protocol}/callback"
 
 
 def _state(provider_id: UUID, nonce: str) -> str:
@@ -133,19 +147,22 @@ async def oidc_start(provider_id: UUID, session: AsyncSession = Depends(get_db_s
         raise HTTPException(409, "OIDC provider is incomplete")
     config = await _oidc_config(provider.issuer)
     nonce = secrets.token_urlsafe(24)
-    settings = get_settings()
-    redirect_uri = f"{settings.allowed_origins_list[0].rstrip('/')}/sso/callback/oidc/{provider.id}"
+    redirect_uri = _callback_uri(provider.id, "oidc")
+    state = _state(provider.id, nonce)
     params = {
         "response_type": "code",
         "client_id": provider.client_id,
         "redirect_uri": redirect_uri,
         "scope": "openid email profile",
-        "state": _state(provider.id, nonce),
+        "state": state,
         "nonce": nonce,
     }
-    from urllib.parse import urlencode
-
-    return RedirectResponse(f"{config['authorization_endpoint']}?{urlencode(params)}")
+    response = RedirectResponse(f"{config['authorization_endpoint']}?{urlencode(params)}")
+    response.set_cookie(
+        "nexus_sso_state", state, max_age=600, httponly=True, secure=_sso_public_base_url().startswith("https://"),
+        samesite="lax", path="/api/sso",
+    )
+    return response
 
 
 async def _finish_sso(provider: SSOProviderModel, email: str, session: AsyncSession) -> dict:
@@ -195,7 +212,11 @@ async def _finish_sso(provider: SSOProviderModel, email: str, session: AsyncSess
 
 @router.get("/{provider_id}/oidc/callback")
 async def oidc_callback(
-    provider_id: UUID, code: str, state: str, session: AsyncSession = Depends(get_db_session)
+    provider_id: UUID,
+    code: str,
+    state: str,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
 ):
     provider = await session.get(SSOProviderModel, provider_id)
     if (
@@ -206,16 +227,16 @@ async def oidc_callback(
     ):
         raise HTTPException(404, "OIDC provider not available")
     state_claims = _decode_state(state)
-    if state_claims.get("provider_id") != str(provider_id):
+    if (
+        state_claims.get("provider_id") != str(provider_id)
+        or request.cookies.get("nexus_sso_state") != state
+    ):
         raise HTTPException(400, "Invalid SSO state")
     config = await _oidc_config(provider.issuer or "")
     secret = ""
     if provider.client_secret_credential_id:
         secret = await CredentialVaultService(session).resolve(provider.client_secret_credential_id)
-    import os
-
-    callback_base = os.getenv("NEXUS_SSO_CALLBACK_BASE_URL", "http://localhost:8000").rstrip("/")
-    redirect_uri = f"{callback_base}/api/sso/{provider.id}/oidc/callback"
+    redirect_uri = _callback_uri(provider.id, "oidc")
     async with httpx.AsyncClient(timeout=10) as client:
         token_response = await client.post(
             config["token_endpoint"],
@@ -250,14 +271,18 @@ async def oidc_callback(
     import json
 
     payload = json.dumps(tokens).replace("</", "<\\/")
-    return Response(
+    response = Response(
         content=(
             "<script>window.opener.postMessage({type:'nexus-sso',tokens:"
             + payload
-            + "}, window.location.origin);window.close();</script>"
+            + "}, "
+            + repr(_sso_public_base_url())
+            + ");window.close();</script>"
         ),
         media_type="text/html",
     )
+    response.delete_cookie("nexus_sso_state", path="/api/sso")
+    return response
 
 
 @router.get("/{provider_id}/saml/metadata")
@@ -277,7 +302,7 @@ async def saml_metadata(provider_id: UUID, session: AsyncSession = Depends(get_d
         "sp": {
             "entityId": provider.entity_id or f"nexus:{provider.id}",
             "assertionConsumerService": {
-                "url": f"http://localhost:8000/api/sso/{provider.id}/saml/acs",
+                "url": _callback_uri(provider.id, "saml"),
                 "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
             },
         },
@@ -317,14 +342,20 @@ async def saml_start(
         "sp": {
             "entityId": provider.entity_id or f"nexus:{provider.id}",
             "assertionConsumerService": {
-                "url": f"http://localhost:8000/api/sso/{provider.id}/saml/acs",
+                "url": _callback_uri(provider.id, "saml"),
                 "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
             },
         },
         "idp": idp["idp"],
     }
+    state = _state(provider.id, secrets.token_urlsafe(24))
     auth = OneLogin_Saml2_Auth(_saml_request(request), settings)
-    return RedirectResponse(auth.login())
+    response = RedirectResponse(auth.login(return_to=state))
+    response.set_cookie(
+        "nexus_sso_state", state, max_age=600, httponly=True, secure=_sso_public_base_url().startswith("https://"),
+        samesite="lax", path="/api/sso",
+    )
+    return response
 
 
 @router.post("/{provider_id}/saml/acs")
@@ -336,8 +367,12 @@ async def saml_acs(
         raise HTTPException(404, "SAML provider not available")
     form = await request.form()
     saml_response = str(form.get("SAMLResponse") or "")
+    relay_state = str(form.get("RelayState") or "")
     if not saml_response:
         raise HTTPException(400, "Missing SAMLResponse")
+    if not relay_state or request.cookies.get("nexus_sso_state") != relay_state:
+        raise HTTPException(400, "Invalid SSO state")
+    _decode_state(relay_state)
     from onelogin.saml2.auth import OneLogin_Saml2_Auth
     from onelogin.saml2.idp_metadata_parser import OneLogin_Saml2_IdPMetadataParser
 
@@ -348,7 +383,7 @@ async def saml_acs(
         "sp": {
             "entityId": provider.entity_id or f"nexus:{provider.id}",
             "assertionConsumerService": {
-                "url": f"http://localhost:8000/api/sso/{provider.id}/saml/acs",
+                "url": _callback_uri(provider.id, "saml"),
                 "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
             },
         },
@@ -366,14 +401,18 @@ async def saml_acs(
     import json
 
     payload = json.dumps(tokens).replace("</", "<\\/")
-    return Response(
+    response = Response(
         content=(
             "<script>window.opener.postMessage({type:'nexus-sso',tokens:"
             + payload
-            + "}, window.location.origin);window.close();</script>"
+            + "}, "
+            + repr(_sso_public_base_url())
+            + ");window.close();</script>"
         ),
         media_type="text/html",
     )
+    response.delete_cookie("nexus_sso_state", path="/api/sso")
+    return response
 
 
 @router.get("/public/providers")

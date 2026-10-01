@@ -11,6 +11,7 @@ class RemediationStatus(StrEnum):
     EXECUTING = "executing"
     EXECUTED = "executed"
     VERIFIED = "verified"
+    ROLLED_BACK = "rolled_back"
     REJECTED = "rejected"
     FAILED = "failed"
 

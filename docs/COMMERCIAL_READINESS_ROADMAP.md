@@ -610,24 +610,17 @@ Operational rule:
 - `8088` = Self-Hosted runtime verification / production-like local workflow.
 - Both may run simultaneously and intentionally share the same NEXUS backend/database.
 
-## Current roadmap — next execution order
+## Current roadmap — post-15 execution order
 
-1. Scheduled Discovery API: complete tenant/workspace-scoped CRUD on top of the existing persistence foundation.
-2. Scheduled Discovery frontend: create, edit, enable/disable and inspect schedules through the UI.
-3. Scheduler/worker execution: due schedules, durable job correlation, success/failure state and next-run calculation.
-4. Discovery reliability: retries, stale recovery, idempotency, audit events and operational visibility.
-5. Teams / memberships / invitations: finish the organization administration lifecycle and align frontend/backend contracts.
-6. Fine-grained RBAC: enforce permission requirements consistently across policy, API and UI.
-7. Credential Vault lifecycle: rotation/revoke/access audit hardening and connection-test workflows.
-8. SSO hardening: complete OIDC/SAML callback URLs, tenant configuration and end-to-end validation before claiming SSO complete.
-9. Integrations and alert ingestion: webhooks plus operational notification lifecycle.
-10. Autonomous governance: policy editor, approval chains, maintenance windows, blast-radius controls and true rollback.
-11. Reliability / recovery: backups, restore drills, outbox/DLQ operations and disaster-recovery validation.
-12. Production/self-hosted hardening: upgrades, backup/restore UX, TLS/security headers, licensing/update path and release packaging.
-13. Usage / billing / SaaS control plane: entitlements, metering, subscriptions and tenant administration.
-14. API / Marketplace maturation: webhooks, idempotency, service identities, signed connector packages and compatibility/release process.
+Blocks 1–15 are now closed for the current commercial-readiness baseline. The remaining work is deeper product maturity and deployment/environment validation:
 
-Delivery rule remains unchanged: one small logical block at a time; backend contract, frontend surface and tests ship together whenever the capability is user-facing.
+16. SaaS control-plane depth: enforce quotas/entitlements across more operations, invoice lifecycle, tenant administration and support tooling.
+17. Self-Hosted edition depth: offline/local-AI operation, update channels, controlled licensing and upgrade UX.
+18. External integration depth: real Slack/Teams/PagerDuty/Opsgenie/monitoring-provider E2E and notification lifecycle.
+19. API/SDK depth: service-identity lifecycle, webhook delivery, signed connector package trust and broader public API resources.
+20. Marketplace/open-source depth: connector SDK distribution, signed packages, compatibility matrix, examples, release artifacts and explicit licensing.
+
+Delivery rule remains unchanged: backend contract, frontend surface, tests and documentation ship together whenever a capability is user-facing.
 
 
 ## 2026-10-01 - Scheduled Discovery complete checkpoint
@@ -660,3 +653,57 @@ Roadmap position:
 - 03 Scheduler / Worker execution - COMPLETE
 - 04 Discovery reliability - IN PROGRESS; the current foundation includes retries, stale-job handling, idempotency and durable execution, while broader recovery/DR work remains later in the roadmap.
 - 05 Teams / Memberships / Invitations - NEXT
+
+
+## 2026-10-01 - Blocks 8–10 closed: SSO, integrations and autonomous governance
+
+Completed and verified:
+- Block 8 — SSO hardening: OIDC/SAML callback URLs now derive from a validated public NEXUS origin; signed state is additionally bound to an HttpOnly cookie; callback messages target the configured browser origin.
+- Block 9 — Integrations/alerts: public API keys can be explicitly granted the `alerts.ingest` scope and can ingest normalized alerts with deduplication through `POST /api/public/v1/alerts`; existing alert acknowledgement/resolution lifecycle remains available in the product UI.
+- Block 10 — Autonomous governance: workspace-scoped governance persists enablement, risk ceilings, allow/deny action/resource controls, approval chains, maintenance windows, blast-radius limits and rollback requirements. Autonomous execution consumes this policy; configured approval chains prevent direct autonomous execution until their ordered approvals are complete.
+- Rollback: verified Linux lab remediations record the pre-remediation service state and expose a structured rollback operation that restores the recorded active/inactive state and records an audit event.
+
+Validation:
+- Backend: 744 passed, 1 skipped, 31 deselected.
+- Frontend: 18 passed; ESLint and production build passed.
+- Alembic: single head at `c3d4e5f6a7b8`, migrations applied successfully.
+- Final release gate includes Ruff and `git diff --check`.
+
+
+## 2026-10-01 — Blocks 11–15 closed
+
+### 11 — Reliability / Recovery ✅
+- Durable queue pending/DLQ visibility exposed through an authenticated Recovery API and frontend console.
+- Authorized operators can requeue up to ten DLQ jobs at a time.
+- DR backup/restore scripts now use the actual Self-Hosted PostgreSQL/Redis container defaults via environment overrides.
+- Backup verification remains AES-256-GCM encrypted and checksum-validated.
+
+### 12 — Production / Self-Hosted hardening ✅
+- NEXUS version is centralized in `VERSION`/environment configuration and exposed through `/system/version`.
+- Docker Compose documents version and SSO public-origin settings.
+- Nginx adds baseline security headers and request-size limits; API emits HSTS behind HTTPS-forwarding proxies.
+- Self-Hosted documentation now covers release validation and recovery operations.
+
+### 13 — Usage / Billing / SaaS ✅
+- Usage quota endpoint derives the current monthly `usage_units` allowance from billing plan entitlements.
+- Metering UI displays plan, consumption, remaining allowance and overage state.
+- Existing billing overview continues to expose tenant-scoped plan entitlements.
+
+### 14 — API / Marketplace maturation ✅
+- Public alert ingestion supports `Idempotency-Key` persistence and replay-safe responses.
+- Python and TypeScript SDKs expose alert ingestion with idempotency support.
+- Marketplace metadata now includes package type, compatibility and integrity status in both API and UI.
+
+### 15 — Release / Open-source readiness ✅
+- Versioned `0.3.0` marker and changelog added.
+- Reproducible Compose/release preflight added in `scripts/release/validate.py`.
+- GitHub release workflow validates backend, frontend and application image builds on version tags.
+- No license has been invented or selected automatically; licensing remains an explicit project-owner decision.
+
+Validation at closure:
+- Backend: full suite must be green before push.
+- Frontend: tests, lint and production build must be green before push.
+- Ruff and `git diff --check` must be clean.
+- Protected `sqlserver-lab-myridian-lab` / port 1433 remains untouched.
+
+Roadmap remaining after Blocks 11–15: the next work is post-v1 operational/product maturity, including deeper external integration E2E, clean-machine release smoke testing and any remaining production deployment gates.

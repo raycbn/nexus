@@ -13,8 +13,8 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-POSTGRES_CONTAINER = "nexus-persistence"
-REDIS_CONTAINER = "lab-redis"
+POSTGRES_CONTAINER = os.environ.get("NEXUS_POSTGRES_CONTAINER", "nexus-selfhosted-postgres")
+REDIS_CONTAINER = os.environ.get("NEXUS_REDIS_CONTAINER", "nexus-selfhosted-redis")
 
 
 def backup_key() -> bytes:

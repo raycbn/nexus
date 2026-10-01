@@ -9,7 +9,8 @@ _ALLOWED: dict[RemediationStatus, set[RemediationStatus]] = {
     RemediationStatus.APPROVED: {RemediationStatus.EXECUTING, RemediationStatus.REJECTED},
     RemediationStatus.EXECUTING: {RemediationStatus.EXECUTED, RemediationStatus.FAILED},
     RemediationStatus.EXECUTED: {RemediationStatus.VERIFIED, RemediationStatus.FAILED},
-    RemediationStatus.VERIFIED: set(),
+    RemediationStatus.VERIFIED: {RemediationStatus.ROLLED_BACK},
+    RemediationStatus.ROLLED_BACK: set(),
     RemediationStatus.REJECTED: set(),
     RemediationStatus.FAILED: set(),
 }

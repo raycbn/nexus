@@ -55,7 +55,7 @@ For a public v1, prefer immutable release images over rebuilding application ima
 ### P0 — required before calling Self-Hosted v1 public
 
 - Provide a versioned, reproducible release bundle or pinned container images.
-- Make the AI runtime explicit: bundle Ollama as an optional Compose profile or document a supported external Ollama endpoint and onboarding flow.
+- AI runtime: the default Self-Hosted Compose now bundles Ollama and automatically pulls the NEXUS-tested Qwen3 4B Q4_K_M model. Keep external-provider support as the next AI platform layer.
 - Verify first-run setup on a clean machine from the release artifact, not the development working tree.
 - Add a single end-to-end smoke test covering setup → login → resource → investigation → incident → remediation simulation.
 - Add a general CI workflow covering backend tests/lint/typecheck plus frontend test/lint/build.
@@ -87,3 +87,17 @@ The public launch should show a concrete incident moving through that loop and m
 5. Follow-up post: engineering lessons, safety controls and what is next.
 
 Do not frame pre-v1 capabilities as generally available until the clean-machine deployment and end-to-end smoke test have passed.
+
+
+## 2026-10-01 — 0.3.0 readiness checkpoint
+
+The repository now has a versioned release marker, changelog, GitHub tag workflow, Self-Hosted configuration validation, recovery console, workspace autonomous governance, idempotent public alert ingestion, usage quota visibility and Marketplace compatibility/integrity metadata.
+
+Current validated local gate for this checkpoint:
+- backend/unit and focused integration coverage green;
+- frontend test/lint/production build green;
+- Ruff and `git diff --check` green;
+- Alembic has a single head and migrations apply successfully;
+- Self-Hosted Compose configuration validates without requiring real production secrets.
+
+A clean-machine release smoke test and real external IdP/Stripe/third-party integration tests remain deployment/environment gates rather than claims of local verification.

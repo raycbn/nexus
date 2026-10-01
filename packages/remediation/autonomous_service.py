@@ -66,11 +66,12 @@ async def execute_autonomous_remediation(
     *,
     max_retries: int = 0,
     dry_run: bool = False,
+    policy_override: Policy | None = None,
 ) -> AutonomousRemediationResult:
     repository = RemediationActionRepository(session)
     attempts_repo = RemediationAttemptRepository(session)
     audit = AuditEventRepository(session)
-    policy = Policy(
+    policy = policy_override or Policy(
         organization_id=action.organization_id,
         name="runtime-autonomous-lab",
         max_risk_level=RiskLevel.HIGH,
@@ -146,6 +147,7 @@ async def execute_autonomous_remediation(
     await session.commit()
 
     async def record_attempt(number, status, message, evidence):
+        evidence = {**evidence, "pre_state": pre_state} if pre_state is not None else evidence
         await attempts_repo.create(
             action.id,
             action.organization_id,
@@ -187,6 +189,11 @@ async def execute_autonomous_remediation(
         )
     await connector.connect(resource)
     try:
+        pre_state = None
+        if hasattr(connector, "execute_read"):
+            pre_state = await _read_service_status(
+                connector, resource, _service_name(action)
+            )
         verifier = RestartServiceVerifier(
             lambda name: _read_service_status(connector, resource, name)
         )

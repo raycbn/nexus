@@ -3,12 +3,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from packages.auth import get_settings, hash_password
+from packages.domain.config import NexusSettings
 from packages.persistence.database import get_session_factory, init_db
 from packages.persistence.repositories.core import CoreRepository
 from packages.platform.metrics import metrics
 
 from apps.api.readiness import readiness_status
 from apps.api.routes.agents import router as agents_router
+from apps.api.routes.ai import router as ai_router
 from apps.api.routes.alerts import router as alerts_router
 from apps.api.routes.audit import router as audit_router
 from apps.api.routes.auth import router as auth_router
@@ -16,11 +18,13 @@ from apps.api.routes.billing import router as billing_router
 from apps.api.routes.connectors import router as connectors_router
 from apps.api.routes.credentials import router as credentials_router
 from apps.api.routes.discovery_schedules import router as discovery_schedules_router
+from apps.api.routes.governance import router as governance_router
 from apps.api.routes.incidents import router as incidents_router
 from apps.api.routes.investigations import router as investigations_router
 from apps.api.routes.metering import router as metering_router
 from apps.api.routes.organization_access import router as organization_access_router
 from apps.api.routes.public_api import router as public_api_router
+from apps.api.routes.recovery import router as recovery_router
 from apps.api.routes.remediations import router as remediations_router
 from apps.api.routes.resources import router as resources_router
 from apps.api.routes.setup import router as setup_router
@@ -51,7 +55,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="NEXUS API",
         description="NEXUS - Multi-tenant AI Operations Platform",
-        version="0.2.0",
+        version=settings.nexus_version,
         lifespan=lifespan,
     )
     app.add_middleware(
@@ -62,6 +66,8 @@ def create_app() -> FastAPI:
         allow_headers=["Authorization", "Content-Type", "X-API-Key"],
     )
     app.include_router(auth_router, prefix="/api")
+    app.include_router(ai_router, prefix="/api")
+    app.include_router(governance_router, prefix="/api")
     app.include_router(alerts_router, prefix="/api")
     app.include_router(billing_router, prefix="/api")
     app.include_router(setup_router, prefix="/api")
@@ -79,6 +85,12 @@ def create_app() -> FastAPI:
     app.include_router(sso_router, prefix="/api")
     app.include_router(metering_router, prefix="/api")
     app.include_router(public_api_router, prefix="/api")
+    app.include_router(recovery_router, prefix="/api")
+
+    @app.get("/system/version")
+    async def system_version():
+        settings = NexusSettings()
+        return {"version": settings.nexus_version, "environment": settings.app_environment}
 
     @app.get("/health")
     async def health_check():

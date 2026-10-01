@@ -4,7 +4,7 @@ from typing import Any
 from uuid import UUID
 
 from packages.agent.llm.contract import LLMProvider
-from packages.agent.llm.ollama import OllamaProvider
+from packages.agent.llm.router import AIProviderRouter, RoutedLLMProvider
 from packages.agent.runtime.events import (
     LLMResponseReceivedEvent,
     ToolAllowedEvent,
@@ -13,7 +13,6 @@ from packages.agent.runtime.events import (
     ToolRequestedEvent,
 )
 from packages.agent.runtime.runtime import AgentRuntime
-from packages.auth import get_settings
 from packages.connectors.factory import create_connector, register_linux_tools
 from packages.connectors.providers.linux import LinuxConnector
 from packages.domain.models.agent import Agent
@@ -189,7 +188,7 @@ class InvestigationApplicationService:
                     runtime_registry.register(mcp_client.create_tool_wrapper(tool_def))
 
                 evaluator = PolicyEvaluator(policy)
-                llm = self._create_llm(runtime_registry)
+                llm = self._create_llm(runtime_registry, "investigation")
                 runtime = AgentRuntime(
                     llm=llm,
                     registry=runtime_registry,
@@ -213,7 +212,9 @@ class InvestigationApplicationService:
                     await self._checkpoint_investigation(engine.investigation, "baseline.collected")
 
                 analysis_registry = ToolRegistry()
-                analysis_llm = self._create_llm(analysis_registry, num_predict=384)
+                analysis_llm = self._create_llm(
+                    analysis_registry, "root_cause", num_predict=384
+                )
                 analysis_runtime = AgentRuntime(
                     llm=analysis_llm,
                     registry=analysis_registry,
@@ -264,7 +265,9 @@ class InvestigationApplicationService:
                         allowed_tool_identifiers=ALL_TOOL_IDS,
                     )
                     validation_results = await validation_executor.execute(validation_plan)
-                    judgment_llm = self._create_llm(analysis_registry, num_predict=384)
+                    judgment_llm = self._create_llm(
+                        analysis_registry, "verification", num_predict=384
+                    )
                     validation_judgments = await self._judge_validations(
                         judgment_llm,
                         validation_results,
@@ -505,19 +508,22 @@ class InvestigationApplicationService:
         ]
         return await judge.judge(payload)
 
-    @staticmethod
     def _create_llm(
+        self,
         runtime_registry: ToolRegistry,
+        task: str,
         num_predict: int | None = None,
-    ) -> OllamaProvider:
-        settings = get_settings()
-        return OllamaProvider(
-            host=settings.ollama_host,
-            model=settings.ollama_model,
+    ) -> LLMProvider:
+        if self._session is None:
+            raise RuntimeError("A database session is required for AI routing")
+        router = AIProviderRouter(
+            session=self._session,
+            organization_id=self._tenant.organization_id,
+            workspace_id=self._tenant.workspace_id,
             registry=runtime_registry,
-            timeout=settings.ollama_timeout,
             num_predict=num_predict,
         )
+        return RoutedLLMProvider(router, task)
 
     @staticmethod
     def _build_analysis_prompt(

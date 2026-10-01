@@ -123,11 +123,15 @@ class LinuxConnector(Connector):
             return WriteResult(
                 success=False, error="Real remediation is restricted to lab resources"
             )
-        if action.action_type != "restart_service":
+        if action.action_type not in {"restart_service", "restore_service_state"}:
             return WriteResult(success=False, error="Unsupported write action")
         service = action.parameters.get("service", "")
         if not service or not service.replace("-", "").replace("_", "").isalnum():
             return WriteResult(success=False, error="Unsafe service name")
+        if action.action_type == "restore_service_state":
+            desired_state = action.parameters.get("desired_state", "")
+            if desired_state not in {"active", "inactive", "failed"}:
+                return WriteResult(success=False, error="Invalid restore state")
         return await self._write_runner.run(resource, action)
 
     async def execute_read(self, resource: Resource, command: str) -> ReadResult:

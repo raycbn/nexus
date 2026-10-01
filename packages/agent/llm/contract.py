@@ -38,6 +38,18 @@ class LLMResponse(BaseModel):
         return len(self.tool_calls) > 0
 
 
+class LLMProviderError(RuntimeError):
+    """Base error for provider-level failures."""
+
+
+class LLMRateLimitError(LLMProviderError):
+    """Provider rejected the request because a rate limit was reached."""
+
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 class LLMProvider(ABC):
     @abstractmethod
     async def generate(self, request: LLMRequest) -> LLMResponse: ...

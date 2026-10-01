@@ -4,10 +4,9 @@ import { KeyRound, Plus, ShieldCheck } from 'lucide-react';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { ErrorState, EmptyState } from '../components/EmptyState';
-import { useCredential, useCredentials, useCreateCredential, useRevokeCredential, useRotateCredential } from '../hooks/useApi';
-import { useAuth } from '../auth/AuthProvider';
+import { useCredential, useCredentials, useCreateCredential, usePermissions, useRevokeCredential, useRotateCredential } from '../hooks/useApi';
 
-const CREDENTIAL_TYPES = ['ssh_key', 'username_password', 'token', 'certificate', 'kubeconfig', 'aws_access_key', 'azure_service_principal', 'gcp_service_account'];
+const CREDENTIAL_TYPES = ['api_key', 'token', 'ssh_key', 'username_password', 'certificate', 'kubeconfig', 'aws_access_key', 'azure_service_principal', 'gcp_service_account'];
 
 function CredentialDetail({ id }: { id: string }) {
   const { data: credential, isLoading, error } = useCredential(id);
@@ -37,8 +36,8 @@ export function CredentialsPage() {
   const { credentialId } = useParams<{ credentialId?: string }>();
   const { data, isLoading, error, refetch } = useCredentials();
   const createCredential = useCreateCredential();
-  const { user } = useAuth();
-  const canCreate = user?.role === 'admin';
+  const { data: permissions } = usePermissions();
+  const canCreate = permissions?.permissions.includes('credentials.manage') ?? false;
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: '', credential_type: 'username_password', value: '', description: '', metadata: '' });
   if (credentialId) return <CredentialDetail id={credentialId} />;

@@ -29,3 +29,18 @@ class NexusClient:
 
     def incidents(self) -> list[dict[str, Any]]:
         return self._get("/incidents")
+
+    def ingest_alert(
+        self, payload: dict[str, Any], *, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        headers = {"X-API-Key": self.api_key}
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        response = httpx.post(
+            f"{self.base_url}/api/public/v1/alerts",
+            headers={**headers, "Content-Type": "application/json"},
+            json=payload,
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()

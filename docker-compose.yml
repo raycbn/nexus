@@ -28,6 +28,36 @@ services:
       retries: 5
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:0.35.0
+    container_name: nexus-selfhosted-ollama
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    volumes:
+      - nexus_ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  ollama-init:
+    image: ollama/ollama:0.35.0
+    container_name: nexus-selfhosted-ollama-init
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL_PRIMARY: ${OLLAMA_MODEL:-hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M}
+      OLLAMA_MODEL_SECONDARY: ${OLLAMA_MODEL_SECONDARY:-qwen3:1.7b}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull \"$${OLLAMA_MODEL_PRIMARY}\" && ollama pull \"$${OLLAMA_MODEL_SECONDARY}\""]
+    volumes:
+      - nexus_ollama_data:/root/.ollama
+    depends_on:
+      ollama:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -47,7 +77,17 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: ${REDIS_DB:-0}
+      OLLAMA_HOST: ${OLLAMA_HOST:-ollama}
+      OLLAMA_PORT: ${OLLAMA_PORT:-11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M}
+      OLLAMA_THINK: ${OLLAMA_THINK:-false}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-8192}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-120}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
+      NEXUS_SSO_PUBLIC_BASE_URL: ${NEXUS_SSO_PUBLIC_BASE_URL:-http://localhost:8080}
+      NEXUS_VERSION: ${NEXUS_VERSION:-0.3.0}
+      NEXUS_POSTGRES_CONTAINER: ${NEXUS_POSTGRES_CONTAINER:-nexus-selfhosted-postgres}
+      NEXUS_REDIS_CONTAINER: ${NEXUS_REDIS_CONTAINER:-nexus-selfhosted-redis}
       NEXUS_VAULT_MASTER_KEY: ${NEXUS_VAULT_MASTER_KEY:?Set NEXUS_VAULT_MASTER_KEY in .env}
       REMEDIATION_KILL_SWITCH: ${REMEDIATION_KILL_SWITCH:-true}
       REMEDIATION_WRITES_ENABLED: ${REMEDIATION_WRITES_ENABLED:-false}
@@ -61,6 +101,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)\""]
       interval: 10s
@@ -116,3 +158,4 @@ services:
 volumes:
   nexus_postgres_data:
   nexus_redis_data:
+  nexus_ollama_data:

@@ -24,18 +24,33 @@ def test_parse_llm_result_accepts_fenced_json():
     assert result.confidence == 0.8
 
 
-def test_service_builds_ollama_provider(monkeypatch):
+def test_service_builds_llm_through_ai_router(monkeypatch):
     captured = {}
 
-    class FakeOllamaProvider:
+    class FakeRouter:
         def __init__(self, **kwargs):
             captured.update(kwargs)
 
-    monkeypatch.setattr(investigation_service, "OllamaProvider", FakeOllamaProvider)
-    llm = investigation_service.InvestigationApplicationService._create_llm(ToolRegistry())
-    assert isinstance(llm, FakeOllamaProvider)
-    assert captured["model"]
+    class FakeRoutedProvider:
+        def __init__(self, router, task):
+            captured["router"] = router
+            captured["task"] = task
+
+    monkeypatch.setattr(investigation_service, "AIProviderRouter", FakeRouter)
+    monkeypatch.setattr(investigation_service, "RoutedLLMProvider", FakeRoutedProvider)
+    service = investigation_service.InvestigationApplicationService(
+        TenantContext(
+            user_id=uuid4(), organization_id=uuid4(), workspace_id=uuid4(), role="operator"
+        ),
+        session=object(),
+    )
+    llm = service._create_llm(ToolRegistry(), "root_cause", num_predict=384)
+    assert isinstance(llm, FakeRoutedProvider)
+    assert captured["organization_id"] == service.tenant.organization_id
+    assert captured["workspace_id"] == service.tenant.workspace_id
+    assert captured["num_predict"] == 384
     assert captured["registry"] is not None
+    assert captured["task"] == "root_cause"
 
 
 def test_service_keeps_tenant_context():
