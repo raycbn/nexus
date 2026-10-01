@@ -46,8 +46,8 @@ class ApiClient {
   async getSetupStatus() { return this.request<{ initialized: boolean }>('/setup/status', { skipAuth: true }); }
   async setup(data: Record<string, unknown>) { return this.request('/setup', { method: 'POST', skipAuth: true, body: JSON.stringify(data) }); }
   async signup(data: Record<string, unknown>) { return this.request('/auth/signup', { method: 'POST', skipAuth: true, body: JSON.stringify(data) }); }
-  async passwordRecovery(email: string) { return this.request('/auth/forgot-password', { method: 'POST', skipAuth: true, body: JSON.stringify({ email }) }); }
-  async passwordReset(token: string, password: string) { return this.request('/auth/reset-password', { method: 'POST', skipAuth: true, body: JSON.stringify({ token, password }) }); }
+  async passwordRecovery(email: string) { return this.request('/auth/password-recovery', { method: 'POST', skipAuth: true, body: JSON.stringify({ email }) }); }
+  async passwordReset(token: string, password: string) { return this.request('/auth/password-reset', { method: 'POST', skipAuth: true, body: JSON.stringify({ token, new_password: password }) }); }
   async verifyEmail(token: string) { return this.request('/auth/verify-email?token=' + encodeURIComponent(token), { method: 'POST', skipAuth: true }); }
   async resendVerification(email: string) { return this.request('/auth/resend-verification', { method: 'POST', skipAuth: true, body: JSON.stringify({ email }) }); }
 
@@ -130,7 +130,7 @@ class ApiClient {
   async getCredential(id: string) { return this.request(`/credentials/${id}`); }
   async createCredential(data: object) { return this.request('/credentials', { method: 'POST', body: JSON.stringify(data) }); }
   async revokeCredential(id: string) { return this.request(`/credentials/${id}/revoke`, { method: 'POST' }); }
-  async rotateCredential(id: string, value: string) { return this.request(`/credentials/${id}/rotate`, { method: 'POST', body: JSON.stringify({ secret_ref: value }) }); }
+  async rotateCredential(id: string, value: string) { return this.request(`/credentials/${id}/value`, { method: 'PUT', body: JSON.stringify({ value }) }); }
   async getDiscoveryHistory(id: string) { return this.request(`/resources/${id}/discovery-history`); }
   async getDiscoverySchedules() { return this.request('/discovery-schedules'); }
   async createDiscoverySchedule(data: object) { return this.request('/discovery-schedules', { method: 'POST', body: JSON.stringify(data) }); }
