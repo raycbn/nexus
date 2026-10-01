@@ -1,7 +1,84 @@
-﻿# NEXUS — Commercial Readiness Audit & Roadmap
+# NEXUS — Commercial Readiness Audit & Roadmap
 
 Date: 2026-09-26
 
+## 🧭 NEXUS — ROADMAP VISUAL
+
+> **Objetivo:** convertir NEXUS en una plataforma AIOps comercial, self-service y gobernada, avanzando en bloques pequeños y verificables.
+
+### 🟢 YA COMPLETADO
+
+| Área | Estado |
+|---|---|
+| 🧠 Investigation Engine | ✅ Completo |
+| 🚨 Incident Engine | ✅ Completo |
+| 🔗 Resource Graph | ✅ Completo |
+| 🐧 Linux / SSH | ✅ Completo |
+| ☸️ Kubernetes | ✅ Completo + E2E |
+| 🪟 Windows Server | ✅ Conector · E2E pendiente |
+| 🗄️ PostgreSQL | ✅ Completo |
+| 🗃️ SQL Server | 🟡 Fundación · E2E pendiente |
+| VMware / vCenter | ✅ Conector · E2E pendiente |
+| ☁️ AWS / Azure / GCP | ✅ Conectores · Live E2E pendiente |
+| 🔎 Discovery History | ✅ Completo |
+| 📥 Approval / Bulk Import | ✅ Completo |
+| 👤 Ownership / Tags | ✅ Completo |
+| 🤖 Autonomous Remediation | ✅ Completo en entorno controlado |
+| 🔐 Credentials / Vault foundation | ✅ Fundación |
+| 🌐 Public API v1 | ✅ Completo |
+| 📦 Python / TypeScript SDK | ✅ Completo |
+| 🛒 Marketplace catalog | ✅ Completo |
+| 🐳 Self-Hosted Docker | ✅ Verificado |
+
+### 🔵 EN CURSO → SIGUIENTE BLOQUE
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ 01  🔎 SCHEDULED DISCOVERY API                              │
+│     CRUD · tenant/workspace · persistencia existente        │
+└──────────────────────────────┬───────────────────────────────┘
+                               ↓
+┌──────────────────────────────────────────────────────────────┐
+│ 02  🖥️ SCHEDULED DISCOVERY FRONTEND                        │
+│     Crear · editar · activar · desactivar · consultar       │
+└──────────────────────────────┬───────────────────────────────┘
+                               ↓
+┌──────────────────────────────────────────────────────────────┐
+│ 03  ⚙️ SCHEDULER / WORKER                                   │
+│     Due schedules · jobs · correlación · next run           │
+└──────────────────────────────┬───────────────────────────────┘
+                               ↓
+┌──────────────────────────────────────────────────────────────┐
+│ 04  🛡️ DISCOVERY RELIABILITY                                │
+│     Retries · stale recovery · idempotencia · auditoría      │
+└──────────────────────────────┬───────────────────────────────┘
+                               ↓
+┌──────────────────────────────────────────────────────────────┐
+│ 05  👥 TEAMS / MEMBERSHIPS / INVITATIONS                    │
+│     Organización · miembros · invitaciones                  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 🟣 BLOQUE DE MADURACIÓN
+
+**06 → 08** · RBAC fino → Vault lifecycle → SSO hardening
+**09 → 10** · Integraciones/alertas → Autonomous Governance
+**11 → 12** · Reliability/Recovery → Production & Self-Hosted hardening
+**13 → 14** · Usage/Billing/SaaS → API & Marketplace maturation
+
+### 🎯 NORMA DE EJECUCIÓN
+
+**Un bloque pequeño → cambio mínimo → test/lint/build → verificación real → commit → siguiente bloque.**
+
+### 🖥️ DOBLE ENTORNO LOCAL
+
+`3000` **DESARROLLO** · Vite + HMR  →  misma API/base  ←  **8088** `SELF-HOSTED` · runtime tipo producción
+
+### 🚦 PRÓXIMO MOVIMIENTO
+
+> **01 — Scheduled Discovery API**
+>
+> No saltamos todavía al scheduler. Primero cerramos el contrato CRUD, lo probamos y conectamos después el frontend.
 ## Executive finding
 
 NEXUS has a working autonomous AIOps core: investigation, evidence, validation, incidents, policy, remediation, durable jobs, workers, real lab writes and verification.
