@@ -1,4 +1,4 @@
-import { useIncident, useIncidentTimeline, useResources, useTransitionIncidentStatus, useUpdateIncidentSeverity, useResolveIncident, useCloseIncident } from '../hooks/useApi';
+import { useIncident, useIncidentTimeline, useResources, useRemediations, useAgents, useRemediationPreflight, useExecuteAutonomousRemediation, useTransitionIncidentStatus, useUpdateIncidentSeverity, useResolveIncident, useCloseIncident } from '../hooks/useApi';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { LoadingOverlay } from '../components/Loading';
@@ -215,6 +215,102 @@ function TimelineSection({ incidentId }: { incidentId: string }) {
   );
 }
 
+function RemediationSection({ incident }: { incident: IncidentDetailDTO }) {
+  const { data: actions, isLoading, error } = useRemediations(incident.investigation_id || undefined);
+  const { data: agentsData } = useAgents();
+  const [selectedActionId, setSelectedActionId] = useState('');
+  const [selectedAgentId, setSelectedAgentId] = useState('');
+  const autonomousAgents = agentsData?.agents.filter((agent) => agent.enabled && agent.autonomy_level === 'autonomous') ?? [];
+  const selectedAction = actions?.find((action) => action.id === selectedActionId);
+  const preflight = useRemediationPreflight(selectedActionId, incident.id, selectedAgentId, Boolean(selectedActionId && selectedAgentId));
+  const autonomousExecute = useExecuteAutonomousRemediation();
+  const executeAutonomous = async () => {
+    if (!preflight.data?.eligible || !selectedActionId || !selectedAgentId) return;
+    await autonomousExecute.mutateAsync({ id: selectedActionId, agentId: selectedAgentId, incidentId: incident.id });
+  };
+  if (!incident.investigation_id) return null;
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-lg font-semibold text-nexus-text">Remediation</h3>
+          <p className="text-xs text-nexus-textMuted mt-1">Governed actions linked to this incident's investigation.</p>
+        </div>
+        <Badge variant="default">{actions?.length ?? 0}</Badge>
+      </div>
+      {isLoading && <p className="text-sm text-nexus-textMuted">Loading remediation actions...</p>}
+      {actions && actions.length > 0 && (
+        <div className="rounded-lg border border-nexus-primary/20 bg-nexus-primary/5 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-nexus-text">Autonomy preflight</p>
+            <p className="text-xs text-nexus-textMuted mt-1">Check policy, agent, lab and safety gates before any autonomous action.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <select value={selectedActionId} onChange={(event) => setSelectedActionId(event.target.value)} className="rounded-lg border border-nexus-border bg-nexus-surface px-3 py-2 text-sm text-nexus-text">
+              <option value="">Select remediation action</option>
+              {actions.map((action) => <option key={action.id} value={action.id}>{action.action_type} · {action.status}</option>)}
+            </select>
+            <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value)} className="rounded-lg border border-nexus-border bg-nexus-surface px-3 py-2 text-sm text-nexus-text">
+              <option value="">Select autonomous agent</option>
+              {autonomousAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+            </select>
+          </div>
+          {preflight.isLoading && <p className="text-xs text-nexus-textMuted">Running autonomy preflight…</p>}
+          {preflight.error && <p className="text-xs text-red-300">Preflight unavailable: {preflight.error.message}</p>}
+          {preflight.data && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-nexus-textMuted">Autonomous execution eligibility</span>
+                <Badge variant="default">{preflight.data.eligible ? 'Eligible' : 'Blocked'}</Badge>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] text-nexus-textMuted">
+                <span>Agent: {preflight.data.agent_autonomous ? '✓' : '✕'}</span>
+                <span>Policy: {preflight.data.policy_autonomous ? '✓' : '✕'}</span>
+                <span>Lab: {preflight.data.lab_only ? (preflight.data.resource_is_lab ? '✓' : '✕') : 'n/a'}</span>
+                <span>Kill switch: {preflight.data.kill_switch_clear ? 'clear' : 'active'}</span>
+              </div>
+              {preflight.data.blockers.length > 0 && (
+                <div className="rounded border border-red-900/60 bg-red-900/10 p-2 text-xs text-red-300">
+                  {preflight.data.blockers.map((blocker: string) => <div key={blocker}>• {blocker}</div>)}
+                </div>
+              )}
+            </div>
+          )}
+          {selectedAction && !selectedAgentId && <p className="text-xs text-nexus-textMuted">Select an autonomous agent to run the preflight.</p>}
+          {preflight.data?.eligible && (
+            <button type="button" onClick={executeAutonomous} disabled={autonomousExecute.isPending} className="rounded-lg bg-nexus-primary px-3 py-2 text-sm text-white disabled:opacity-50">
+              {autonomousExecute.isPending ? 'Executing autonomous remediation…' : 'Execute autonomous remediation'}
+            </button>
+          )}
+          {autonomousExecute.data && <p className="text-xs text-nexus-textMuted">{autonomousExecute.data.message}</p>}
+          {autonomousExecute.error && <p className="text-xs text-red-300">Autonomous execution failed: {autonomousExecute.error.message}</p>}
+        </div>
+      )}
+      {error && <p className="text-sm text-red-300">Unable to load remediation actions.</p>}
+      {!isLoading && !error && actions && actions.length === 0 && <p className="text-sm text-nexus-textMuted">No remediation actions have been proposed.</p>}
+      {!isLoading && !error && actions && actions.length > 0 && (
+        <div className="space-y-2">
+          {actions.map((action) => (
+            <div key={action.id} className="rounded-lg border border-nexus-border bg-nexus-surfaceHover p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-nexus-text">{action.action_type}</p>
+                  <p className="text-xs text-nexus-textMuted truncate">{action.command_preview}</p>
+                </div>
+                <Badge variant="default">{action.status}</Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-nexus-textMuted">
+                <span>Risk: {action.risk_level}</span>
+                <span>Connector: {action.connector_key}</span>
+                <span>{action.requires_approval ? 'Approval required' : 'Approval not required'}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
 function AuditSection({ incident }: { incident: IncidentDetailDTO }) {
   if (!incident.audit_event_ids || incident.audit_event_ids.length === 0) {
     return null;
@@ -420,6 +516,7 @@ export function IncidentDetailPage() {
 
         <div className="space-y-6">
           <InvestigationSection incident={incident} />
+          <RemediationSection incident={incident} />
           <AuditSection incident={incident} />
         </div>
       </div>

@@ -20,7 +20,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   login: (email: string, password: string, mfaCode?: string) => Promise<void>;
   switchWorkspace: (workspaceId: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -84,8 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsSwitchingWorkspace(false);
         }
       },
-      logout() {
-        api.clearAuth();
+      async logout() {
+        await api.logout();
         setUser(null);
         setWorkspaces([]);
       },

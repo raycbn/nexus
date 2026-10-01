@@ -16,12 +16,37 @@ function writeAuth(tokens: AuthTokens) { localStorage.setItem(AUTH_KEY, JSON.str
 
 class ApiClient {
   private baseUrl: string;
+  private refreshPromise: Promise<AuthTokens | null> | null = null;
   constructor(baseUrl: string = API_BASE) { this.baseUrl = baseUrl; }
   setAuth(tokens: AuthTokens) { writeAuth(tokens); }
   clearAuth() { localStorage.removeItem(AUTH_KEY); }
   hasAuth() { return readAuth() !== null; }
 
-  private async request<T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  private async refreshAccessToken(): Promise<AuthTokens | null> {
+    const auth = readAuth();
+    if (!auth?.refresh_token) return null;
+    if (this.refreshPromise) return this.refreshPromise;
+    this.refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${this.baseUrl}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: auth.refresh_token }),
+        });
+        if (!response.ok) return null;
+        const tokens = await response.json() as AuthTokens;
+        writeAuth(tokens);
+        return tokens;
+      } catch {
+        return null;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+    return this.refreshPromise;
+  }
+
+  private async request<T = any>(endpoint: string, options: RequestOptions = {}, allowRefresh = true): Promise<T> {
     const { skipAuth, ...requestOptions } = options;
     const auth = readAuth();
     const headers = new Headers(requestOptions.headers);
@@ -29,8 +54,11 @@ class ApiClient {
     if (!skipAuth && auth?.access_token) headers.set('Authorization', `Bearer ${auth.access_token}`);
     const response = await fetch(`${this.baseUrl}${endpoint}`, { ...requestOptions, headers });
     if (!response.ok) {
+      if (response.status === 401 && !skipAuth && allowRefresh && !endpoint.startsWith('/auth/')) {
+        const refreshed = await this.refreshAccessToken();
+        if (refreshed) return this.request<T>(endpoint, options, false);
+      }
       const error: any = new Error(`API Error: ${response.status}`);
-      error.status = response.status;
       error.status = response.status;
       error.detail = await response.json().catch(() => null);
       throw error;

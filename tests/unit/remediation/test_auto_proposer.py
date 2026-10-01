@@ -28,9 +28,11 @@ def make_investigation(confidence=1.0, validated=True, passed=True):
             observed_value={"service": "nginx", "status": "inactive"},
         )
     )
+    evidence_id = investigation.evidence[0].id
     investigation.hypotheses.append(
         Hypothesis(
             text="nginx is stopped",
+            supporting_evidence_ids=[evidence_id],
             status=HypothesisStatus.VALIDATED if validated else HypothesisStatus.PROPOSED,
         )
     )
@@ -39,6 +41,7 @@ def make_investigation(confidence=1.0, validated=True, passed=True):
             action_tool="get_service_status",
             expected_condition="service active",
             passed=passed,
+            evidence_ids=[evidence_id] if passed else [],
         )
     )
     investigation.set_conclusion(
@@ -64,4 +67,26 @@ def test_auto_proposer_builds_structured_restart_action():
 def test_auto_proposer_refuses_unsafe_evidence(confidence, validated, passed):
     investigation, _ = make_investigation(confidence, validated, passed)
     with pytest.raises(AutoProposalError):
+        select_validated_restart_action(investigation)
+
+
+def test_auto_proposer_ignores_unrelated_stopped_service_evidence():
+    investigation, resource_id = make_investigation()
+    unrelated = Evidence(
+        source_tool="get_service_status",
+        resource_id=resource_id,
+        observed_value={"service": "postgresql", "status": "inactive"},
+    )
+    investigation.evidence.append(unrelated)
+
+    action = select_validated_restart_action(investigation)
+    assert action.resource_id == resource_id
+    assert "nginx" in action.command_preview
+
+
+def test_auto_proposer_rejects_missing_evidence_linkage():
+    investigation, _ = make_investigation()
+    investigation.hypotheses[0].supporting_evidence_ids = []
+    investigation.validations[0].evidence_ids = []
+    with pytest.raises(AutoProposalError, match="validated stopped service"):
         select_validated_restart_action(investigation)

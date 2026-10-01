@@ -30,6 +30,7 @@ import { MeteringPage } from './pages/Metering';
 import { BillingPage } from './pages/Billing';
 import { DeveloperApiPage } from './pages/DeveloperApi';
 import { MarketplacePage } from './pages/Marketplace';
+import { AIOperationsPage } from './pages/AIOperations';
 
 export function App() {
   return <Routes>
@@ -41,7 +42,7 @@ export function App() {
     <Route path="/setup" element={<SetupPage />} />
     <Route path="/signup" element={<SignupPage />} />
     <Route element={<ProtectedRoute />}><Route path="/" element={<Layout />}>
-      <Route index element={<Dashboard />} /><Route path="dashboard" element={<Dashboard />} />
+      <Route index element={<Dashboard />} /><Route path="dashboard" element={<Dashboard />} /><Route path="ai-operations" element={<AIOperationsPage />} />
       <Route path="incidents" element={<IncidentsPage />} /><Route path="incidents/:incidentId" element={<IncidentDetailPage />} />
       <Route path="investigate" element={<InvestigatePage />} /><Route path="resources" element={<ResourcesPage />} />
       <Route path="resources/topology" element={<ResourceTopologyPage />} /><Route path="resources/:resourceId" element={<ResourcesPage />} />

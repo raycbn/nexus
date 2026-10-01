@@ -1,10 +1,18 @@
 # NEXUS
 
-NEXUS is a multi-tenant AI Operations Platform that enables organizations and their users to connect infrastructure and deploy autonomous AI agents capable of investigating operational incidents.
+NEXUS is a multi-tenant AI Operations Platform focused on one core loop:
+
+**Detect → Investigate → Prove Root Cause → Remediate Safely → Verify → Resolve**
+
+NEXUS connects infrastructure, gathers evidence, reasons over incidents and executes governed remediation through policies, safety controls and audit trails.
 
 ## What NEXUS Solves
 
-Operational incidents in modern infrastructure are complex. Traditional monitoring tools surface alerts but lack the ability to reason across data sources, correlate evidence, and determine root causes. NEXUS bridges this gap by providing AI agents that can autonomously investigate incidents using read-only access to infrastructure data.
+Operational incidents are rarely solved by a single alert. NEXUS is designed to move from signal to evidence-backed diagnosis and then to controlled recovery.
+
+The product is built around an operational chain rather than a chatbot experience:
+
+**Evidence → Reasoning → Structured Action → Policy → Safety → Autonomy Decision → Controlled Execution → Verification → Audit**
 
 Unlike a chatbot that can only answer questions, NEXUS agents take initiative: they receive incident context, proactively query relevant data sources through connectors, apply tools to analyze findings, and report structured investigative results — all within a multi-tenant, auditable framework.
 
@@ -40,16 +48,11 @@ Connectors are the primary mechanism for NEXUS to interact with external infrast
 
 All connectors implement a common interface defined in `packages/connectors/base`. New providers are added in `packages/connectors/providers` without modifying the agent runtime or API layer.
 
-## Roadmap
+## Release readiness
 
-| Phase | Target | Notes |
-|-------|--------|-------|
-| v0.1 | Local AI agent with read-only tools | Initial skeleton, local Ollama inference, basic connectors |
-| v0.2 | Multi-tenant API + RBAC | Full CRUD for agents, workspaces, connectors |
-| v0.3 | Policy engine + approval workflow | Dangerous action gating, configurable approval chains |
-| v0.4 | Persistent storage | Database layer, agent memory, audit log persistence |
-| v0.5 | Cloud deployment | Docker Compose production stack, managed connectors |
-| v1.0 | Full agent marketplace | Shareable agent configurations, connector marketplace |
+The current development baseline includes multi-tenancy, RBAC, authentication/MFA, resources, connectors, credentials, investigations, incidents, governed remediation, scheduled discovery, public API keys, SSO, billing/metering and the Autonomous Resolution UI.
+
+The remaining v1 release gates are documented in `docs/V1_RELEASE_READINESS.md`. The key public-release items are a reproducible Self-Hosted release, explicit AI/Ollama deployment support, a clean-machine end-to-end smoke test, general CI and production exposure/backup documentation.
 
 ## Technology Stack
 
@@ -63,29 +66,36 @@ All connectors implement a common interface defined in `packages/connectors/base
 ## Development Setup
 
 ```bash
-# Install dependencies
 pip install -e ".[dev]"
-
-# Copy environment
 cp .env.example .env
-
-# Run linting
 ruff check apps/ packages/ tests/
-
-# Run type checking
 mypy apps/ packages/
-
-# Run tests
 pytest tests/
 ```
+
+## Self-Hosted
+
+For the current source-based deployment:
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+docker compose ps
+```
+
+Then open `http://localhost:8080` and complete the NEXUS setup wizard.
+
+The current Compose stack contains PostgreSQL, Redis, the API, scheduled discovery worker and frontend. **Ollama is not bundled yet**, so AI investigations require a reachable Ollama instance until the release packaging adds an explicit AI runtime option.
+
+For deployment and upgrade guidance see `docs/SELF_HOSTED.md`. For the v1 gate list see `docs/V1_RELEASE_READINESS.md`.
 
 ## Project Structure
 
 ```
 nexus/
-├── apps/                # Applications (API, web — web is placeholder)
+├── apps/                # Applications
 │   ├── api/             # FastAPI application
-│   └── web/             # Web frontend (not yet implemented)
+│   └── web/             # React/Vite frontend
 ├── packages/            # Reusable domain packages
 │   ├── agent/           # Agent runtime and memory
 │   ├── mcp/             # MCP server integration

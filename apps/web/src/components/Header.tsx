@@ -66,7 +66,7 @@ export function Header() {
             <div className="text-right">
               <p className="text-sm font-medium text-nexus-text">{user?.user_id || 'User'}</p>
               <p className="text-xs text-nexus-textMuted">
-                Organization {user?.organization_id?.slice(0, 8) || 'â€”'}
+                Organization {user?.organization_id?.slice(0, 8) || '—'}
               </p>
             </div>
           </div>

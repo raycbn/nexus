@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation, NavLink } from 'react-router-dom';
 import { cn } from '../utils/helpers';
 import {
-  LayoutDashboard, AlertTriangle, Bell, Search, Server, Network, Bot, FileText,
+  LayoutDashboard, AlertTriangle, Bell, Search, Server, Network, Bot, FileText, BrainCircuit,
   Settings, Cable, KeyRound, ShieldCheck, CalendarClock, Users, MonitorSmartphone,
   Gauge, CreditCard, Code2, Store, ChevronLeft, ChevronRight,
 } from 'lucide-react';
@@ -10,6 +10,7 @@ import {
 const navigation = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/incidents', label: 'Incidents', icon: AlertTriangle },
+  { path: '/ai-operations', label: 'AI Operations', icon: BrainCircuit },
   { path: '/alerts', label: 'Alerts', icon: Bell },
   { path: '/metering', label: 'Usage & Metering', icon: Gauge },
   { path: '/billing', label: 'Billing', icon: CreditCard },

@@ -171,6 +171,13 @@ export function useExecuteRemediation() {
   });
 }
 
+export function useExecuteAutonomousRemediation() {
+  return useMutation({
+    mutationFn: ({ id, agentId, incidentId, dryRun }: { id: string; agentId: string; incidentId: string; dryRun?: boolean }) =>
+      api.executeAutonomousRemediation(id, { agent_id: agentId, incident_id: incidentId, dry_run: dryRun ?? false }),
+  });
+}
+
 export function useSimulateRemediation() {
   return useMutation({
     mutationFn: (id: string) => api.simulateRemediation(id),

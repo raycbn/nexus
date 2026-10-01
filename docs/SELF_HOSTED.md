@@ -1,6 +1,6 @@
 # NEXUS Self-Hosted
 
-NEXUS can run as a four-service Docker Compose deployment: PostgreSQL, Redis, API and frontend.
+NEXUS currently runs as a five-service Docker Compose deployment: PostgreSQL, Redis, API, scheduled discovery worker and frontend.
 
 ## Requirements
 
@@ -11,6 +11,7 @@ NEXUS can run as a four-service Docker Compose deployment: PostgreSQL, Redis, AP
 ## Configuration
 
 At minimum set `SECRET_KEY` and `NEXUS_VAULT_MASTER_KEY` to strong random values.
+Set `ALLOWED_ORIGINS` for the URL where users will access NEXUS when it is not local-only.
 Do not commit `.env` or secret values.
 
 For the default deployment the frontend is published on `http://localhost:8080`.
@@ -23,6 +24,8 @@ docker compose up -d --build
 ```
 
 Wait for the API healthcheck to become healthy, then open the frontend.
+
+The current Compose stack provides the application runtime and scheduled-discovery worker, but it does not bundle Ollama. AI investigations therefore require either an Ollama instance reachable from the API container or a future NEXUS Compose profile that provisions the AI runtime.
 
 ## Verify
 
@@ -41,9 +44,13 @@ docker compose down
 
 Named volumes are retained by `docker compose down`.
 
+## External exposure
+
+For any Internet-facing deployment, put nginx, Caddy or another reverse proxy with TLS in front of the NEXUS web service. Do not publish PostgreSQL or Redis ports. Restrict API access to the application path and keep secrets outside source control.
+
 ## Upgrade
 
-Pull the new NEXUS source, review `.env.example` changes, then run:
+Prefer a pinned NEXUS release rather than an arbitrary development branch. Review `.env.example` and release notes for configuration or migration changes, then run:
 
 ```bash
 docker compose up -d --build

@@ -78,7 +78,7 @@ export function RemediationProposal({ investigation }: { investigation: Investig
             {simulate.isPending ? 'Simulating…' : 'Run safe simulation'}
           </button>
           {simulate.data && <div className="text-xs text-nexus-textMuted">Simulation: {simulate.data.message}</div>}
-          {action.status === 'approved' && safety.data?.writes_enabled && !safety.data?.kill_switch_enabled && <button onClick={executeAction} disabled={execute.isPending} className="rounded-lg border border-nexus-primary px-3 py-2 text-sm text-nexus-text hover:bg-nexus-bg">{execute.isPending ? 'Executing?' : 'Execute approved remediation'}</button>}
+
           {executionMessage && <div className="text-xs text-nexus-textMuted">Execution: {executionMessage}</div>}
         </div>
       )}

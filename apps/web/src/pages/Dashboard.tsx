@@ -10,8 +10,11 @@ import {
   Bot,
   TrendingUp,
   XCircle,
+  BrainCircuit,
+  ArrowRight,
 } from 'lucide-react';
 import { cn } from '../utils/helpers';
+import { Link } from 'react-router-dom';
 import type { AgentSummaryDTO, IncidentSummaryDTO, ResourceSummaryDTO } from '../types';
 
 const statusColors = {
@@ -190,6 +193,22 @@ export function Dashboard() {
           <p className="text-nexus-textMuted">System overview and active incidents</p>
         </div>
       </div>
+
+      {/* AI Operations - NEXUS core */}
+      <Link to="/ai-operations" className="block group">
+        <div className="rounded-xl border border-nexus-primary/30 bg-nexus-primary/5 p-5 transition-colors group-hover:border-nexus-primary/60">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-nexus-primary/10 text-nexus-primary"><BrainCircuit className="h-6 w-6" /></div>
+              <div>
+                <div className="flex items-center gap-2"><h2 className="text-lg font-semibold text-nexus-text">AI Operations</h2><Badge variant="default">NEXUS Core</Badge></div>
+                <p className="mt-1 text-sm text-nexus-textMuted">Identify → investigate → prove root cause → remediate → verify → resolve.</p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-2 text-sm font-medium text-nexus-primary">Open AI Operations <ArrowRight className="h-4 w-4" /></span>
+          </div>
+        </div>
+      </Link>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
