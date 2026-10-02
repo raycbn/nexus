@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 from packages.connectors.providers.linux import LinuxConnector
@@ -450,6 +451,12 @@ class GetServiceStatusTool(LinuxBaseTool):
         }
 
     async def _check_process(self, name: str) -> bool:
+        if (
+            not name
+            or name != name.strip()
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@-]*", name) is None
+        ):
+            return False
         result = await self._execute_command(
             f"pgrep -x -- {name} 2>/dev/null || ps -eo comm | grep -w -- {name}"
         )
@@ -485,4 +492,3 @@ class GetServiceStatusTool(LinuxBaseTool):
             "nginx": service_status if service == "nginx" else "unknown",
             "python_api": service_status if service in {"python3", "nexus-demo"} else "unknown",
         }
-

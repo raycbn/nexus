@@ -313,9 +313,8 @@ export interface InvestigationIncidentSuggestionDTO {
   reasons: string[];
 }
 
-export interface AuthTokenPair {
+export interface AuthSessionResponse {
   access_token: string;
-  refresh_token: string;
   token_type: string;
   expires_in: number;
 }

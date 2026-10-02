@@ -13,6 +13,7 @@ from packages.persistence.models.organization_access import (
     TeamMembershipModel,
     TeamModel,
 )
+from packages.persistence.repositories.refresh_token import RefreshTokenRepository
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -332,6 +333,7 @@ async def update_membership(
     if payload.enabled is not None:
         user.enabled = payload.enabled
         membership.status = "active" if payload.enabled else "disabled"
+    await RefreshTokenRepository(session).revoke_all_for_user(user.id)
     await session.commit()
     return {
         "user_id": str(user.id),

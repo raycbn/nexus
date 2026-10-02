@@ -360,3 +360,30 @@ class TestLinuxToolsNoArbitraryExecution:
         ]
         for tool in tools:
             assert "command" not in tool.get_input_schema().get("properties", {})
+
+
+class TestGetServiceStatusToolSafety:
+    @pytest.mark.asyncio
+    async def test_rejects_shell_metacharacters_in_service_name(self, mock_connector):
+        from unittest.mock import AsyncMock
+
+        mock_connector._connection.run = AsyncMock()
+        tool = GetServiceStatusTool(mock_connector)
+        assert await tool._check_process("nginx; id") is False
+        mock_connector._connection.run.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_accepts_normal_systemd_service_name(self, mock_connector):
+        from unittest.mock import AsyncMock, MagicMock
+
+        async def mock_run(command, timeout=None, **kwargs):
+            result = MagicMock()
+            result.stdout = "1234\n"
+            result.stderr = ""
+            result.exit_status = 0
+            return result
+
+        mock_connector._connection.run = AsyncMock(side_effect=mock_run)
+        tool = GetServiceStatusTool(mock_connector)
+        assert await tool._check_process("nexus-api.service") is True
+        mock_connector._connection.run.assert_awaited_once()

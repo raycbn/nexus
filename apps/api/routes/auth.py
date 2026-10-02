@@ -1,9 +1,10 @@
+import hmac
 import os
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from packages.auth import (
     TokenPair,
     create_token_pair,
@@ -38,7 +39,61 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str = Field(min_length=20)
+    refresh_token: str | None = Field(default=None, min_length=20)
+
+
+class BrowserAuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+_REFRESH_COOKIE = "nexus_refresh"
+_CSRF_COOKIE = "nexus_csrf"
+
+
+def _cookie_secure() -> bool:
+    return get_settings().app_environment != "local"
+
+
+def _set_browser_session(response: Response, token_pair: TokenPair) -> None:
+    response.set_cookie(
+        _REFRESH_COOKIE,
+        token_pair.refresh_token,
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="lax",
+        max_age=get_settings().refresh_token_expire_days * 86400,
+        path="/api/auth",
+    )
+    response.set_cookie(
+        _CSRF_COOKIE,
+        os.urandom(24).hex(),
+        httponly=False,
+        secure=_cookie_secure(),
+        samesite="lax",
+        max_age=get_settings().refresh_token_expire_days * 86400,
+        path="/api/auth",
+    )
+
+
+def _clear_browser_session(response: Response) -> None:
+    response.delete_cookie(_REFRESH_COOKIE, path="/api/auth")
+    response.delete_cookie(_CSRF_COOKIE, path="/api/auth")
+
+
+def _require_csrf(request: Request) -> None:
+    cookie = request.cookies.get(_CSRF_COOKIE)
+    header = request.headers.get("X-CSRF-Token")
+    if not cookie or not header or not hmac.compare_digest(cookie, header):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+
+def _refresh_token_from_request(request: Request, dto: RefreshRequest) -> str:
+    token = request.cookies.get(_REFRESH_COOKIE) or dto.refresh_token
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing refresh session")
+    return token
 
 
 class PasswordRecoveryRequest(BaseModel):
@@ -59,7 +114,6 @@ class MeDTO(BaseModel):
     organization_id: UUID
     workspace_id: UUID | None
     role: str
-
 
 
 class SignupRequest(BaseModel):
@@ -96,9 +150,13 @@ async def signup(
     await session.commit()
     send_email_verification_email(user.email, token)
     return SignupResponseDTO(
-        user_id=user.id, organization_id=organization.id,
-        workspace_id=workspace.id, email=user.email,
+        user_id=user.id,
+        organization_id=organization.id,
+        workspace_id=workspace.id,
+        email=user.email,
     )
+
+
 @router.post("/verify-email", status_code=204)
 async def verify_email(
     token: str,
@@ -133,12 +191,13 @@ async def resend_verification(
     return {"message": "Verification instructions have been issued"}
 
 
-@router.post("/login", response_model=TokenPair)
+@router.post("/login", response_model=BrowserAuthResponse)
 async def login(
     dto: LoginRequest,
     request: Request,
+    response: Response,
     session: Annotated[AsyncSession, Depends(get_db_session)],
-) -> TokenPair:
+) -> BrowserAuthResponse:
     settings = get_settings()
     repo = CoreRepository(session)
     user = await repo.get_user_by_email(dto.email)
@@ -147,6 +206,7 @@ async def login(
     from packages.auth.mfa import hash_recovery_code, verify_code
     from packages.persistence.repositories.mfa import MfaRepository
     from packages.secrets.vault import SecretVault
+
     mfa = await MfaRepository(session).get(user.id)
     if mfa is not None and mfa.enabled_at is not None:
         secret = SecretVault().decrypt(mfa.secret_ciphertext, mfa.secret_nonce, user.id)
@@ -161,17 +221,28 @@ async def login(
         if not valid:
             raise HTTPException(status_code=401, detail="MFA verification required")
     principal = AuthenticatedPrincipal(
-        user_id=user.id, organization_id=user.organization_id,
-        workspace_id=user.default_workspace_id, role=user.role,
+        user_id=user.id,
+        organization_id=user.organization_id,
+        workspace_id=user.default_workspace_id,
+        role=user.role,
     )
     token_pair = create_token_pair(principal, settings)
     refresh_claims = decode_token(token_pair.refresh_token, settings, expected_type="refresh")
     refresh_repo = RefreshTokenRepository(session)
     await refresh_repo.create(
-        user.id, refresh_claims.jti, datetime.fromtimestamp(refresh_claims.exp, tz=UTC),
-        request.headers.get("user-agent"), request.client.host if request.client else None,
+        user.id,
+        refresh_claims.jti,
+        datetime.fromtimestamp(refresh_claims.exp, tz=UTC),
+        request.headers.get("user-agent"),
+        request.client.host if request.client else None,
     )
-    return token_pair
+    await session.commit()
+    _set_browser_session(response, token_pair)
+    return BrowserAuthResponse(
+        access_token=token_pair.access_token,
+        token_type=token_pair.token_type,
+        expires_in=token_pair.expires_in,
+    )
 
 
 @router.post("/password-recovery", status_code=202)
@@ -214,15 +285,20 @@ async def password_reset(
     await session.commit()
 
 
-@router.post("/refresh", response_model=TokenPair)
+@router.post("/refresh", response_model=BrowserAuthResponse)
 async def refresh(
     dto: RefreshRequest,
     request: Request,
+    response: Response,
     session: Annotated[AsyncSession, Depends(get_db_session)],
-) -> TokenPair:
+) -> BrowserAuthResponse:
+    if request.cookies.get(_REFRESH_COOKIE):
+        _require_csrf(request)
     settings = get_settings()
     try:
-        claims = decode_token(dto.refresh_token, settings, expected_type="refresh")
+        claims = decode_token(
+            _refresh_token_from_request(request, dto), settings, expected_type="refresh"
+        )
     except HTTPException:
         raise
     refresh_repo = RefreshTokenRepository(session)
@@ -254,16 +330,23 @@ async def refresh(
         stored_token.ip_address,
     )
     await refresh_repo.revoke(stored_token, replaced_by_jti=new_refresh_claims.jti)
-    return token_pair
+    await session.commit()
+    _set_browser_session(response, token_pair)
+    return BrowserAuthResponse(
+        access_token=token_pair.access_token,
+        token_type=token_pair.token_type,
+        expires_in=token_pair.expires_in,
+    )
 
 
-@router.post("/switch-workspace", response_model=TokenPair)
+@router.post("/switch-workspace", response_model=BrowserAuthResponse)
 async def switch_workspace(
     dto: SwitchWorkspaceRequest,
     request: Request,
+    response: Response,
     principal: Annotated[AuthenticatedPrincipal, Depends(get_current_principal)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
-) -> TokenPair:
+) -> BrowserAuthResponse:
     settings = get_settings()
     repository = CoreRepository(session)
     workspace = await repository.get_workspace(principal.organization_id, dto.workspace_id)
@@ -286,7 +369,13 @@ async def switch_workspace(
         request.headers.get("user-agent"),
         request.client.host if request.client else None,
     )
-    return token_pair
+    await session.commit()
+    _set_browser_session(response, token_pair)
+    return BrowserAuthResponse(
+        access_token=token_pair.access_token,
+        token_type=token_pair.token_type,
+        expires_in=token_pair.expires_in,
+    )
 
 
 class SessionDTO(BaseModel):
@@ -345,20 +434,22 @@ async def revoke_all_sessions(
 
 @router.post("/logout", status_code=204)
 async def logout(
-    dto: RefreshRequest,
+    request: Request,
+    response: Response,
     principal: Annotated[AuthenticatedPrincipal, Depends(get_current_principal)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> None:
-    settings = get_settings()
-    try:
-        claims = decode_token(dto.refresh_token, settings, expected_type="refresh")
-    except HTTPException:
-        return
-    if UUID(claims.sub) != principal.user_id:
-        return
-    repository = RefreshTokenRepository(session)
-    await repository.revoke_for_user(principal.user_id, claims.jti)
-    await session.commit()
+    _require_csrf(request)
+    token = request.cookies.get(_REFRESH_COOKIE)
+    if token:
+        try:
+            claims = decode_token(token, get_settings(), expected_type="refresh")
+        except HTTPException:
+            claims = None
+        if claims is not None and UUID(claims.sub) == principal.user_id:
+            await RefreshTokenRepository(session).revoke_for_user(principal.user_id, claims.jti)
+            await session.commit()
+    _clear_browser_session(response)
 
 
 @router.get("/permissions")
@@ -376,5 +467,3 @@ async def me(principal: Annotated[AuthenticatedPrincipal, Depends(get_current_pr
         workspace_id=principal.workspace_id,
         role=principal.role,
     )
-
-

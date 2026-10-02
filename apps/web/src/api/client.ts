@@ -3,7 +3,14 @@ import type { AIModelProfileDTO, AISettingsDTO, AutonomousGovernanceDTO, Recover
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 const AUTH_KEY = 'nexus.auth';
-type AuthTokens = { access_token: string; refresh_token: string; token_type?: string };
+type AuthTokens = { access_token: string; token_type?: string; expires_in?: number };
+const CSRF_COOKIE = 'nexus_csrf';
+
+function readCookie(name: string): string | null {
+  const entry = document.cookie.split('; ').find((item) => item.startsWith(`${name}=`));
+  return entry ? decodeURIComponent(entry.slice(name.length + 1)) : null;
+}
+
 export type Workspace = { id: string; organization_id: string; name: string; description: string | null; enabled: boolean };
 type RequestOptions = RequestInit & { skipAuth?: boolean };
 
@@ -23,15 +30,15 @@ class ApiClient {
   hasAuth() { return readAuth() !== null; }
 
   private async refreshAccessToken(): Promise<AuthTokens | null> {
-    const auth = readAuth();
-    if (!auth?.refresh_token) return null;
     if (this.refreshPromise) return this.refreshPromise;
+    const csrf = readCookie(CSRF_COOKIE);
+    if (!csrf) return null;
     this.refreshPromise = (async () => {
       try {
         const response = await fetch(`${this.baseUrl}/auth/refresh`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: auth.refresh_token }),
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+          credentials: 'include',
         });
         if (!response.ok) return null;
         const tokens = await response.json() as AuthTokens;
@@ -52,7 +59,16 @@ class ApiClient {
     const headers = new Headers(requestOptions.headers);
     headers.set('Content-Type', 'application/json');
     if (!skipAuth && auth?.access_token) headers.set('Authorization', `Bearer ${auth.access_token}`);
-    const response = await fetch(`${this.baseUrl}${endpoint}`, { ...requestOptions, headers });
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(requestOptions.method?.toUpperCase() ?? '') &&
+        (endpoint === '/auth/refresh' || endpoint === '/auth/logout')) {
+      const csrf = readCookie(CSRF_COOKIE);
+      if (csrf) headers.set('X-CSRF-Token', csrf);
+    }
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      ...requestOptions,
+      credentials: 'include',
+      headers,
+    });
     if (!response.ok) {
       if (response.status === 401 && !skipAuth && allowRefresh && !endpoint.startsWith('/auth/')) {
         const refreshed = await this.refreshAccessToken();
@@ -218,7 +234,12 @@ class ApiClient {
   async updateSSOProvider(id: string, data: Record<string, unknown>) { return this.request(`/sso/providers/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
   async deleteSSOProvider(id: string) { return this.request(`/sso/providers/${id}`, { method: 'DELETE' }); }
   async getPublicSSOProviders() { return this.request('/sso/public/providers', { skipAuth: true }); }
-  async logout() { const auth = readAuth(); if (auth) await this.request('/auth/logout', { method: 'POST', body: JSON.stringify({ refresh_token: auth.refresh_token }) }).catch(() => undefined); this.clearAuth(); }
+  async logout() {
+    if (readAuth()) {
+      await this.request('/auth/logout', { method: 'POST' }).catch(() => undefined);
+    }
+    this.clearAuth();
+  }
 }
 
 export const api = new ApiClient();

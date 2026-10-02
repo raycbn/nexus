@@ -770,3 +770,46 @@ Blocks 1–20 are now closed for the current commercial-readiness implementation
 - The new merge migration passes Ruff.
 - Live Docker redeployment was intentionally not forced because the local Docker command runner was blocking; no protected container was touched.
 - Credentialed third-party notification E2E and formal license selection remain external/provider-owner release gates, not code defects.
+
+
+## 2026-10-02 — Phase 0 Security Baseline closed
+
+### 21 — SSO Security Hardening ✅
+- SSO client-secret credentials are restricted to the requesting organization and enabled API-key/token credential types.
+- OIDC issuer and discovered endpoint URLs are validated before server-side access.
+- Private, loopback, link-local, multicast, reserved and unspecified OIDC destinations are rejected unless explicitly allowlisted.
+- OIDC discovery redirects are disabled.
+- OIDC/SAML callbacks no longer expose refresh tokens to the browser opener.
+- `NEXUS_SSO_OIDC_ALLOWED_HOSTS` documents the controlled exception for internal IdPs.
+
+### 22 — Browser Auth Hardening ✅
+- Browser login/refresh responses return access-token state only.
+- Refresh tokens are stored in an HttpOnly, SameSite cookie and are not retained in browser JavaScript storage.
+- Refresh/logout use a CSRF cookie plus header check for cookie-authenticated browser flows.
+- CORS now explicitly supports credentialed browser requests and the CSRF header.
+- Existing non-browser refresh requests using a refresh token in the request body remain compatible when no browser refresh cookie is present.
+
+### 23 — Execution Security ✅
+- Linux service/process metadata is validated against a strict identifier allowlist before being interpolated into remote diagnostic commands.
+- Shell metacharacters and surrounding whitespace are rejected from service/process names used by the diagnostic tool.
+- Regression coverage verifies both malicious and normal service names.
+
+### 24 — Tenant Isolation Hardening ✅
+- Organization and workspace isolation remains enforced by tenant-scoped repository queries for core resources and agents.
+- Cross-organization and cross-workspace regression tests pass.
+- Organization membership role/enable changes now revoke the affected user's refresh-token sessions.
+- Current workspace model is explicitly organization-wide; a separate workspace-membership security model is deferred to a future product decision rather than implied by the current implementation.
+
+### Phase 0 validation — 2026-10-02
+- Targeted backend security regression suite: 32 passed.
+- Linux execution-security suite: 17 passed.
+- Tenant-isolation integration suite: 3 passed.
+- Frontend ESLint: passed with zero warnings allowed.
+- Frontend tests: 18 passed.
+- Frontend production build: passed; TypeScript compilation is part of `npm run build`; 1,542 modules transformed.
+- Full authentication integration file was attempted but the local PostgreSQL service repeatedly lost its network connection with Windows `WinError 64`; this is an environment/infrastructure failure, not a demonstrated authentication assertion failure. The test helper that previously assumed `.value` on an httpx cookie jar has also been corrected.
+- Protected `sqlserver-lab-myridian-lab` / port 1433 was not touched.
+- Live Docker redeployment was not forced during this phase because the local Docker command runner remained blocked.
+
+### Phase 0 status
+Blocks 21–24 are closed. Phase 1 starts with Self-Hosted Migration Engine, followed by CI Quality Gate, Dependency Modernization and Critical Path Coverage.

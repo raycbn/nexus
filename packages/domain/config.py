@@ -17,6 +17,7 @@ class NexusSettings(BaseSettings):
     auto_bootstrap: bool = False
     allowed_origins: str = "http://localhost:3000"
     sso_public_base_url: str = ""
+    sso_oidc_allowed_hosts: str = ""
     nexus_version: str = "0.3.0"
     postgres_container: str = "nexus-selfhosted-postgres"
     redis_container: str = "nexus-selfhosted-redis"

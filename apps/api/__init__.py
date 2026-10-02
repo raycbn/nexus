@@ -63,9 +63,9 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins_list,
-        allow_credentials=False,
+        allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-CSRF-Token"],
     )
     app.include_router(auth_router, prefix="/api")
     app.include_router(ai_router, prefix="/api")

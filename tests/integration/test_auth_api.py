@@ -79,6 +79,22 @@ async def login(client, email, password, **extra):
     return await client.post("/api/auth/login", json=payload)
 
 
+def refresh_cookie(response):
+    return response.cookies["nexus_refresh"]
+
+
+def csrf_cookie(response):
+    return response.cookies["nexus_csrf"]
+
+
+def csrf_headers(response):
+    return {"X-CSRF-Token": csrf_cookie(response)}
+
+
+def set_refresh_cookie(client, token: str) -> None:
+    client.cookies.set("nexus_refresh", token, path="/api/auth")
+
+
 @pytest.mark.asyncio
 async def test_login_and_me_return_authenticated_identity(api_client, test_session_factory):
     user_id, email, password = await create_test_user(test_session_factory)
@@ -160,7 +176,7 @@ async def test_refresh_rejects_token_with_wrong_organization_claim(
     user_id, email, password = await create_test_user(test_session_factory)
     try:
         response = await login(api_client, email, password)
-        refresh = response.json()["refresh_token"]
+        refresh = refresh_cookie(response)
         claims = __import__("packages.auth", fromlist=["decode_token"]).decode_token(
             refresh, get_settings(), expected_type="refresh"
         )
@@ -175,7 +191,8 @@ async def test_refresh_rejects_token_with_wrong_organization_claim(
             )
             .refresh_token
         )
-        result = await api_client.post("/api/auth/refresh", json={"refresh_token": token})
+        set_refresh_cookie(api_client, token)
+        result = await api_client.post("/api/auth/refresh", headers=csrf_headers(response))
         assert result.status_code == 401
         assert claims.sub == str(user_id)
     finally:
@@ -187,14 +204,14 @@ async def test_refresh_rotates_and_reuse_revokes_token_family(api_client, test_s
     user_id, email, password = await create_test_user(test_session_factory)
     try:
         response = await login(api_client, email, password)
-        old_refresh = response.json()["refresh_token"]
-        rotated = await api_client.post("/api/auth/refresh", json={"refresh_token": old_refresh})
+        old_refresh = refresh_cookie(response)
+        rotated = await api_client.post("/api/auth/refresh", headers=csrf_headers(response))
         assert rotated.status_code == 200
-        reused = await api_client.post("/api/auth/refresh", json={"refresh_token": old_refresh})
+        set_refresh_cookie(api_client, old_refresh)
+        reused = await api_client.post("/api/auth/refresh", headers=csrf_headers(rotated))
         assert reused.status_code == 401
-        result = await api_client.post(
-            "/api/auth/refresh", json={"refresh_token": rotated.json()["refresh_token"]}
-        )
+        set_refresh_cookie(api_client, refresh_cookie(rotated))
+        result = await api_client.post("/api/auth/refresh", headers=csrf_headers(rotated))
         assert result.status_code == 401
     finally:
         await delete_test_user(user_id, test_session_factory)
@@ -205,10 +222,11 @@ async def test_login_refresh_and_reuse_revokes_refresh_family(api_client, test_s
     user_id, email, password = await create_test_user(test_session_factory)
     try:
         response = await login(api_client, email, password)
-        refresh = response.json()["refresh_token"]
-        first = await api_client.post("/api/auth/refresh", json={"refresh_token": refresh})
+        refresh = refresh_cookie(response)
+        first = await api_client.post("/api/auth/refresh", headers=csrf_headers(response))
         assert first.status_code == 200
-        second = await api_client.post("/api/auth/refresh", json={"refresh_token": refresh})
+        set_refresh_cookie(api_client, refresh)
+        second = await api_client.post("/api/auth/refresh", headers=csrf_headers(first))
         assert second.status_code == 401
     finally:
         await delete_test_user(user_id, test_session_factory)
@@ -270,7 +288,7 @@ async def test_sessions_can_list_revoke_and_revoke_all(api_client, test_session_
         all_revoked = await api_client.post("/api/auth/sessions/revoke-all", headers=headers)
         assert all_revoked.status_code == 204
         result = await api_client.post(
-            "/api/auth/refresh", json={"refresh_token": second.json()["refresh_token"]}
+            "/api/auth/refresh", headers=csrf_headers(second)
         )
         assert result.status_code == 401
     finally:

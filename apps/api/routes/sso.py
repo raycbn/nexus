@@ -1,4 +1,6 @@
+import ipaddress
 import secrets
+import socket
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode, urlparse
 from uuid import UUID, uuid4
@@ -7,7 +9,13 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse, Response
 from jose import jwt
-from packages.auth import create_token_pair, get_settings, hash_password, require_permissions
+from packages.auth import (
+    TokenPair,
+    create_token_pair,
+    get_settings,
+    hash_password,
+    require_permissions,
+)
 from packages.domain.models.context import TenantContext
 from packages.persistence.models.core import UserModel, WorkspaceModel
 from packages.persistence.models.sso_provider import SSOProviderModel
@@ -62,6 +70,64 @@ def _callback_uri(provider_id: UUID, protocol: str) -> str:
     return f"{_sso_public_base_url()}/api/sso/{provider_id}/{protocol}/callback"
 
 
+def _set_browser_session(response: Response, tokens: TokenPair) -> None:
+    secure = get_settings().app_environment != "local"
+    response.set_cookie(
+        "nexus_refresh",
+        tokens.refresh_token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=get_settings().refresh_token_expire_days * 86400,
+        path="/api/auth",
+    )
+    response.set_cookie(
+        "nexus_csrf",
+        secrets.token_hex(24),
+        httponly=False,
+        secure=secure,
+        samesite="lax",
+        max_age=get_settings().refresh_token_expire_days * 86400,
+        path="/api/auth",
+    )
+
+
+def _allowed_oidc_hosts() -> set[str]:
+    value = getattr(get_settings(), "sso_oidc_allowed_hosts", "")
+    return {item.strip().lower() for item in value.split(",") if item.strip()}
+
+
+def _validate_oidc_url(value: str, *, allowed_schemes: set[str] | None = None) -> str:
+    parsed = urlparse(value.strip())
+    schemes = allowed_schemes or {"https"}
+    if parsed.scheme not in schemes or not parsed.hostname or parsed.username or parsed.password:
+        raise HTTPException(
+            422, "OIDC endpoint URL must use an allowed scheme and contain no credentials"
+        )
+    host = parsed.hostname.rstrip(".").lower()
+    if host in {"localhost", "localhost.localdomain"} and get_settings().app_environment != "local":
+        raise HTTPException(422, "Local OIDC endpoints are only allowed in local environment")
+    try:
+        addresses = {
+            item[4][0] for item in socket.getaddrinfo(host, parsed.port, type=socket.SOCK_STREAM)
+        }
+    except OSError as exc:
+        raise HTTPException(422, "OIDC endpoint hostname cannot be resolved") from exc
+    allowed_hosts = _allowed_oidc_hosts()
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ) and host not in allowed_hosts:
+            raise HTTPException(422, "OIDC endpoint resolves to a private or reserved network")
+    return value.strip().rstrip("/")
+
+
 def _state(provider_id: UUID, nonce: str) -> str:
     settings = get_settings()
     now = datetime.now(UTC)
@@ -81,6 +147,27 @@ def _decode_state(value: str) -> dict:
         return jwt.decode(value, get_settings().secret_key_str, algorithms=["HS256"])
     except Exception as exc:
         raise HTTPException(400, "Invalid or expired SSO state") from exc
+
+
+async def _resolve_client_secret_credential(
+    session: AsyncSession,
+    organization_id: UUID,
+    credential_id: UUID | None,
+) -> str:
+    if credential_id is None:
+        return ""
+    from packages.persistence.models.credential import CredentialModel
+
+    credential = await session.scalar(
+        select(CredentialModel).where(
+            CredentialModel.id == credential_id,
+            CredentialModel.organization_id == organization_id,
+            CredentialModel.enabled.is_(True),
+        )
+    )
+    if credential is None or credential.credential_type not in {"api_key", "token"}:
+        raise HTTPException(422, "SSO client-secret credential is unavailable")
+    return await CredentialVaultService(session).resolve(credential.id)
 
 
 @router.get("/providers")
@@ -104,6 +191,16 @@ async def create_provider(
         raise HTTPException(422, "OIDC requires issuer")
     if payload.protocol == "saml" and not payload.metadata_xml:
         raise HTTPException(422, "SAML requires IdP metadata XML")
+    if payload.issuer:
+        _validate_oidc_url(
+            payload.issuer,
+            allowed_schemes={"https", "http"}
+            if get_settings().app_environment == "local"
+            else {"https"},
+        )
+    await _resolve_client_secret_credential(
+        session, tenant.organization_id, payload.client_secret_credential_id
+    )
     provider = SSOProviderModel(
         id=uuid4(), organization_id=tenant.organization_id, **payload.model_dump()
     )
@@ -131,11 +228,25 @@ async def delete_provider(
 
 
 async def _oidc_config(issuer: str) -> dict:
-    url = issuer.rstrip("/") + "/.well-known/openid-configuration"
-    async with httpx.AsyncClient(timeout=10) as client:
+    issuer_url = _validate_oidc_url(
+        issuer,
+        allowed_schemes={"https", "http"}
+        if get_settings().app_environment == "local"
+        else {"https"},
+    )
+    url = issuer_url + "/.well-known/openid-configuration"
+    async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
         response = await client.get(url)
+        if response.is_redirect or response.is_permanent_redirect:
+            raise HTTPException(422, "OIDC discovery redirects are not allowed")
         response.raise_for_status()
-        return response.json()
+        document = response.json()
+    for key in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
+        endpoint = document.get(key)
+        if not isinstance(endpoint, str):
+            raise HTTPException(422, f"OIDC discovery is missing {key}")
+        _validate_oidc_url(endpoint)
+    return document
 
 
 @router.get("/{provider_id}/oidc/start")
@@ -159,13 +270,18 @@ async def oidc_start(provider_id: UUID, session: AsyncSession = Depends(get_db_s
     }
     response = RedirectResponse(f"{config['authorization_endpoint']}?{urlencode(params)}")
     response.set_cookie(
-        "nexus_sso_state", state, max_age=600, httponly=True, secure=_sso_public_base_url().startswith("https://"),
-        samesite="lax", path="/api/sso",
+        "nexus_sso_state",
+        state,
+        max_age=600,
+        httponly=True,
+        secure=_sso_public_base_url().startswith("https://"),
+        samesite="lax",
+        path="/api/sso",
     )
     return response
 
 
-async def _finish_sso(provider: SSOProviderModel, email: str, session: AsyncSession) -> dict:
+async def _finish_sso(provider: SSOProviderModel, email: str, session: AsyncSession) -> TokenPair:
     email = email.strip().lower()
     if not email or "@" not in email:
         raise HTTPException(400, "SSO identity has no usable email")
@@ -207,7 +323,7 @@ async def _finish_sso(provider: SSOProviderModel, email: str, session: AsyncSess
         user.id, claims["jti"], datetime.fromtimestamp(claims["exp"], tz=UTC), "sso", "sso"
     )
     await session.commit()
-    return tokens.model_dump()
+    return tokens
 
 
 @router.get("/{provider_id}/oidc/callback")
@@ -216,6 +332,7 @@ async def oidc_callback(
     code: str,
     state: str,
     request: Request,
+    response: Response,
     session: AsyncSession = Depends(get_db_session),
 ):
     provider = await session.get(SSOProviderModel, provider_id)
@@ -233,9 +350,9 @@ async def oidc_callback(
     ):
         raise HTTPException(400, "Invalid SSO state")
     config = await _oidc_config(provider.issuer or "")
-    secret = ""
-    if provider.client_secret_credential_id:
-        secret = await CredentialVaultService(session).resolve(provider.client_secret_credential_id)
+    secret = await _resolve_client_secret_credential(
+        session, provider.organization_id, provider.client_secret_credential_id
+    )
     redirect_uri = _callback_uri(provider.id, "oidc")
     async with httpx.AsyncClient(timeout=10) as client:
         token_response = await client.post(
@@ -270,17 +387,22 @@ async def oidc_callback(
     tokens = await _finish_sso(provider, str(oidc_claims.get("email") or ""), session)
     import json
 
-    payload = json.dumps(tokens).replace("</", "<\\/")
-    response = Response(
-        content=(
-            "<script>window.opener.postMessage({type:'nexus-sso',tokens:"
-            + payload
-            + "}, "
-            + repr(_sso_public_base_url())
-            + ");window.close();</script>"
-        ),
-        media_type="text/html",
-    )
+    _set_browser_session(response, tokens)
+    payload = json.dumps(
+        {
+            "access_token": tokens.access_token,
+            "token_type": tokens.token_type,
+            "expires_in": tokens.expires_in,
+        }
+    ).replace("</", "<\\/")
+    response.body = (
+        "<script>window.opener.postMessage({type:'nexus-sso',tokens:"
+        + payload
+        + "}, "
+        + repr(_sso_public_base_url())
+        + ");window.close();</script>"
+    ).encode()
+    response.media_type = "text/html"
     response.delete_cookie("nexus_sso_state", path="/api/sso")
     return response
 
@@ -352,15 +474,23 @@ async def saml_start(
     auth = OneLogin_Saml2_Auth(_saml_request(request), settings)
     response = RedirectResponse(auth.login(return_to=state))
     response.set_cookie(
-        "nexus_sso_state", state, max_age=600, httponly=True, secure=_sso_public_base_url().startswith("https://"),
-        samesite="lax", path="/api/sso",
+        "nexus_sso_state",
+        state,
+        max_age=600,
+        httponly=True,
+        secure=_sso_public_base_url().startswith("https://"),
+        samesite="lax",
+        path="/api/sso",
     )
     return response
 
 
 @router.post("/{provider_id}/saml/acs")
 async def saml_acs(
-    provider_id: UUID, request: Request, session: AsyncSession = Depends(get_db_session)
+    provider_id: UUID,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_db_session),
 ):
     provider = await session.get(SSOProviderModel, provider_id)
     if not provider or provider.protocol != "saml" or not provider.enabled:
@@ -400,17 +530,22 @@ async def saml_acs(
     tokens = await _finish_sso(provider, email, session)
     import json
 
-    payload = json.dumps(tokens).replace("</", "<\\/")
-    response = Response(
-        content=(
-            "<script>window.opener.postMessage({type:'nexus-sso',tokens:"
-            + payload
-            + "}, "
-            + repr(_sso_public_base_url())
-            + ");window.close();</script>"
-        ),
-        media_type="text/html",
-    )
+    _set_browser_session(response, tokens)
+    payload = json.dumps(
+        {
+            "access_token": tokens.access_token,
+            "token_type": tokens.token_type,
+            "expires_in": tokens.expires_in,
+        }
+    ).replace("</", "<\\/")
+    response.body = (
+        "<script>window.opener.postMessage({type:'nexus-sso',tokens:"
+        + payload
+        + "}, "
+        + repr(_sso_public_base_url())
+        + ");window.close();</script>"
+    ).encode()
+    response.media_type = "text/html"
     response.delete_cookie("nexus_sso_state", path="/api/sso")
     return response
 
@@ -445,6 +580,9 @@ async def update_provider(
     if payload.enabled is not None:
         provider.enabled = payload.enabled
     if payload.client_secret_credential_id is not None:
+        await _resolve_client_secret_credential(
+            session, tenant.organization_id, payload.client_secret_credential_id
+        )
         provider.client_secret_credential_id = payload.client_secret_credential_id
     if payload.attribute_mapping is not None:
         provider.attribute_mapping = payload.attribute_mapping
