@@ -23,6 +23,7 @@ PERMISSIONS = (
     "remediation.manage",
     "audit.read",
     "recovery.manage",
+    "support.read",
     "alerts.read",
     "alerts.manage",
     "metering.read",

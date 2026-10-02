@@ -12,3 +12,8 @@
 - Self-Hosted release/version visibility and deployment hardening.
 - Usage quota visibility and billing entitlements.
 - Public API SDK alert ingestion with idempotency support.
+- SaaS entitlement enforcement, usage quotas, invoice history and protected tenant support summary.
+- Self-Hosted release-channel/local-AI status and operator-controlled upgrade metadata.
+- Notification endpoints for webhook, Slack, Teams, PagerDuty and Opsgenie with delivery history/retry.
+- Public API alert reads and API-key rotation.
+- Marketplace compatibility/trust matrix, Ed25519 manifest signing and release source/checksum artifacts.

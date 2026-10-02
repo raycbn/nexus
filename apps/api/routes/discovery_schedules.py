@@ -4,6 +4,7 @@ from uuid import UUID
 from croniter import croniter
 from fastapi import APIRouter, Depends, HTTPException, status
 from packages.auth import require_permissions
+from packages.billing.entitlements import enforce_feature
 from packages.domain.models.context import TenantContext
 from packages.persistence.repositories.core import CoreRepository
 from packages.persistence.repositories.discovery_schedule import DiscoveryScheduleRepository
@@ -44,6 +45,7 @@ class DiscoveryScheduleUpdateDTO(BaseModel):
 def _next_run(cron_expression: str, timezone: str) -> datetime:
 
     from zoneinfo import ZoneInfo
+
     try:
         tz = ZoneInfo(timezone)
         base = datetime.now(tz)
@@ -80,12 +82,14 @@ async def get_schedule(
         raise HTTPException(status_code=404, detail="Schedule not found")
     return _dto(schedule)
 
+
 @router.post("", response_model=DiscoveryScheduleDTO, status_code=status.HTTP_201_CREATED)
 async def create_schedule(
     payload: DiscoveryScheduleCreateDTO,
     tenant: TenantContext = Depends(require_permissions("discovery.manage")),
     session: AsyncSession = Depends(get_db_session),
 ) -> DiscoveryScheduleDTO:
+    await enforce_feature(session, tenant.organization_id, "discovery.schedules")
     resource = await CoreRepository(session).get_resource(
         tenant.organization_id, payload.resource_id, tenant.workspace_id
     )
@@ -100,8 +104,12 @@ async def create_schedule(
         raise HTTPException(status_code=409, detail="Resource has no connector binding")
     next_run = _next_run(payload.cron_expression, payload.timezone)
     schedule = await DiscoveryScheduleRepository(session).create(
-        tenant.organization_id, tenant.workspace_id, payload.resource_id,
-        payload.cron_expression, payload.timezone, next_run,
+        tenant.organization_id,
+        tenant.workspace_id,
+        payload.resource_id,
+        payload.cron_expression,
+        payload.timezone,
+        next_run,
     )
     await session.commit()
     return _dto(schedule)
@@ -129,6 +137,7 @@ async def update_schedule(
         schedule.next_run_at = _next_run(cron_expression, timezone)
     await session.commit()
     return _dto(schedule)
+
 
 @router.delete("/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_schedule(

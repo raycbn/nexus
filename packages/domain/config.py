@@ -20,6 +20,10 @@ class NexusSettings(BaseSettings):
     nexus_version: str = "0.3.0"
     postgres_container: str = "nexus-selfhosted-postgres"
     redis_container: str = "nexus-selfhosted-redis"
+    update_channel: str = "stable"
+    update_manifest_url: str = ""
+    update_latest_version: str = "0.3.0"
+    license_mode: str = "owner-configured"
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None
     billing_success_url: str = "http://localhost:3000/billing?success=1"

@@ -34,7 +34,9 @@ import { AIOperationsPage } from './pages/AIOperations';
 import { AISettingsPage } from './pages/AISettings';
 import { AutonomousGovernancePage } from './pages/AutonomousGovernance';
 import { RecoveryPage } from './pages/Recovery';
-
+import { SelfHostedPage } from './pages/SelfHosted';
+import { NotificationsPage } from './pages/Notifications';
+  
 export function App() {
   return <Routes>
     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -54,7 +56,9 @@ export function App() {
       <Route path="settings/ai" element={<AISettingsPage />} />
       <Route path="settings/governance" element={<AutonomousGovernancePage />} />
       <Route path="settings/recovery" element={<RecoveryPage />} />
-      <Route path="connectors" element={<ConnectorsPage />} /><Route path="credentials" element={<CredentialsPage />} />
+      <Route path="settings/self-hosted" element={<SelfHostedPage />} />
+      <Route path="settings/notifications" element={<NotificationsPage />} />
+        <Route path="connectors" element={<ConnectorsPage />} /><Route path="credentials" element={<CredentialsPage />} />
       <Route path="credentials/:credentialId" element={<CredentialsPage />} /><Route path="remediations" element={<RemediationsPage />} />
       <Route path="jobs/:jobId" element={<JobStatusPage />} /><Route path="discovery-schedules" element={<DiscoverySchedulesPage />} />
       <Route path="organization" element={<OrganizationAccessPage />} /><Route path="sessions" element={<SessionsPage />} />

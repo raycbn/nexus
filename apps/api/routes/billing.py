@@ -8,7 +8,7 @@ from packages.auth import get_settings, require_permissions
 from packages.domain.models.context import TenantContext
 from packages.persistence.models.billing import BillingPlanModel, BillingSubscriptionModel
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.dependencies import get_db_session
@@ -203,20 +203,31 @@ async def overview(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     from packages.persistence.models.saas import BillingEntitlementModel
-    subscription = (await session.execute(
-        select(BillingSubscriptionModel).where(
-            BillingSubscriptionModel.organization_id == tenant.organization_id
+
+    subscription = (
+        await session.execute(
+            select(BillingSubscriptionModel).where(
+                BillingSubscriptionModel.organization_id == tenant.organization_id
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     plan = await session.get(BillingPlanModel, subscription.plan_id) if subscription else None
     rows = []
     if plan:
-        rows = (await session.execute(
-            select(BillingEntitlementModel).where(
-                BillingEntitlementModel.plan_id == plan.id,
-                BillingEntitlementModel.enabled.is_(True),
-            ).order_by(BillingEntitlementModel.feature_key)
-        )).scalars().all()
+        rows = (
+            (
+                await session.execute(
+                    select(BillingEntitlementModel)
+                    .where(
+                        BillingEntitlementModel.plan_id == plan.id,
+                        BillingEntitlementModel.enabled.is_(True),
+                    )
+                    .order_by(BillingEntitlementModel.feature_key)
+                )
+            )
+            .scalars()
+            .all()
+        )
     return ControlPlaneDTO(
         plan=plan.key if plan else "unassigned",
         subscription_status=subscription.status if subscription else "unassigned",
@@ -224,3 +235,81 @@ async def overview(
         entitlements=[EntitlementDTO.model_validate(r, from_attributes=True) for r in rows],
     )
 
+
+class InvoiceDTO(BaseModel):
+    id: str
+    status: str
+    currency: str
+    amount_due: int
+    amount_paid: int
+    hosted_invoice_url: str | None
+    invoice_pdf: str | None
+    created_at: datetime
+
+
+@router.get("/invoices", response_model=list[InvoiceDTO])
+async def invoices(
+    tenant: Annotated[TenantContext, Depends(require_permissions("billing.read"))],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[InvoiceDTO]:
+    row = await session.scalar(
+        select(BillingSubscriptionModel).where(
+            BillingSubscriptionModel.organization_id == tenant.organization_id
+        )
+    )
+    if row is None or not row.stripe_customer_id:
+        return []
+    _stripe()
+    result = stripe.Invoice.list(customer=row.stripe_customer_id, limit=20)
+    return [
+        InvoiceDTO(
+            id=item.id,
+            status=item.get("status") or "unknown",
+            currency=(item.get("currency") or "eur").upper(),
+            amount_due=item.get("amount_due") or 0,
+            amount_paid=item.get("amount_paid") or 0,
+            hosted_invoice_url=item.get("hosted_invoice_url"),
+            invoice_pdf=item.get("invoice_pdf"),
+            created_at=datetime.fromtimestamp(item.get("created"), UTC),
+        )
+        for item in result.data
+    ]
+
+
+@router.get("/support-summary")
+async def support_summary(
+    tenant: Annotated[TenantContext, Depends(require_permissions("support.read"))],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, object]:
+    from packages.persistence.models.core import AgentModel, OrganizationModel, ResourceModel
+    from packages.persistence.models.organization_access import MembershipModel
+    from packages.persistence.models.usage import UsageEventModel
+
+    organization = await session.get(OrganizationModel, tenant.organization_id)
+    members = await session.scalar(
+        select(func.count())
+        .select_from(MembershipModel)
+        .where(MembershipModel.organization_id == tenant.organization_id)
+    )
+    resources = await session.scalar(
+        select(func.count())
+        .select_from(ResourceModel)
+        .where(ResourceModel.organization_id == tenant.organization_id)
+    )
+    agents = await session.scalar(
+        select(func.count())
+        .select_from(AgentModel)
+        .where(AgentModel.organization_id == tenant.organization_id)
+    )
+    usage_events = await session.scalar(
+        select(func.count())
+        .select_from(UsageEventModel)
+        .where(UsageEventModel.organization_id == tenant.organization_id)
+    )
+    return {
+        "organization": organization.name if organization else "unknown",
+        "members": members or 0,
+        "resources": resources or 0,
+        "agents": agents or 0,
+        "usage_events": usage_events or 0,
+    }

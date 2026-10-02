@@ -22,11 +22,13 @@ from apps.api.routes.governance import router as governance_router
 from apps.api.routes.incidents import router as incidents_router
 from apps.api.routes.investigations import router as investigations_router
 from apps.api.routes.metering import router as metering_router
+from apps.api.routes.notifications import router as notifications_router
 from apps.api.routes.organization_access import router as organization_access_router
 from apps.api.routes.public_api import router as public_api_router
 from apps.api.routes.recovery import router as recovery_router
 from apps.api.routes.remediations import router as remediations_router
 from apps.api.routes.resources import router as resources_router
+from apps.api.routes.self_hosted import router as self_hosted_router
 from apps.api.routes.setup import router as setup_router
 from apps.api.routes.sso import router as sso_router
 from apps.api.routes.workspaces import router as workspaces_router
@@ -84,8 +86,10 @@ def create_app() -> FastAPI:
     app.include_router(investigations_router, prefix="/api")
     app.include_router(sso_router, prefix="/api")
     app.include_router(metering_router, prefix="/api")
+    app.include_router(notifications_router, prefix="/api")
     app.include_router(public_api_router, prefix="/api")
     app.include_router(recovery_router, prefix="/api")
+    app.include_router(self_hosted_router, prefix="/api")
 
     @app.get("/system/version")
     async def system_version():

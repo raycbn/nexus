@@ -117,6 +117,8 @@ export function SettingsPage() {
             <Link to="/settings/ai" className="rounded-lg bg-nexus-primary px-3 py-2 text-sm font-medium text-white">AI settings</Link>
             <Link to="/settings/governance" className="rounded-lg border border-nexus-border px-3 py-2 text-sm font-medium text-nexus-text">Autonomous governance</Link>
             <Link to="/settings/recovery" className="rounded-lg border border-nexus-border px-3 py-2 text-sm font-medium text-nexus-text">Recovery</Link>
+            <Link to="/settings/self-hosted" className="rounded-lg border border-nexus-border px-3 py-2 text-sm font-medium text-nexus-text">Self-Hosted</Link>
+            <Link to="/settings/notifications" className="rounded-lg border border-nexus-border px-3 py-2 text-sm font-medium text-nexus-text">Notifications</Link>
           </div>
         </div>
       </ConfigSection>

@@ -707,3 +707,51 @@ Validation at closure:
 - Protected `sqlserver-lab-myridian-lab` / port 1433 remains untouched.
 
 Roadmap remaining after Blocks 11–15: the next work is post-v1 operational/product maturity, including deeper external integration E2E, clean-machine release smoke testing and any remaining production deployment gates.
+
+
+## 2026-10-01 — Blocks 16–20 closed
+
+### 16 — SaaS control-plane depth ✅
+- Monthly `usage_units` quotas are now enforced server-side before recording billable usage.
+- Feature entitlements can block gated operations with a tenant-safe HTTP 402 response.
+- Billing exposes tenant-scoped invoice history when Stripe is configured.
+- Organization membership roles can be changed through a protected API while preventing removal of the last enabled administrator.
+- A support summary surface provides non-secret tenant counts for operators.
+
+### 17 — Self-Hosted edition depth ✅
+- Self-Hosted exposes version, release channel, latest configured version and upgrade availability through `/api/self-hosted/status`.
+- Local Ollama configuration is surfaced as an offline-capable execution path.
+- Update configuration is explicit and operator-controlled; NEXUS does not auto-replace a running deployment.
+- Licensing remains owner-controlled and is surfaced as configuration rather than an invented license choice.
+- Frontend Self-Hosted console is available at `/settings/self-hosted`.
+
+### 18 — External integration depth ✅
+- Notification endpoints support webhook, Slack, Teams, PagerDuty and Opsgenie provider contracts.
+- Provider credentials resolve through the existing encrypted credential vault rather than plaintext notification configuration.
+- Delivery attempts, response status, failure counters and delivery timestamps are persisted.
+- Authorized operators can send a test notification and retry failed deliveries.
+- Real third-party delivery still requires customer/provider credentials and was not represented as a live E2E result in this local closure.
+
+### 19 — API/SDK depth ✅
+- Public API adds tenant-scoped alert reads with `alerts.read`.
+- Public API keys can be rotated without recovering or exposing the old secret.
+- Rotation returns a new secret once and immediately revokes the old identity.
+- The existing Python and TypeScript SDKs remain aligned with the public v1 contract; the client surface now includes the extended identity/alert operations.
+
+### 20 — Marketplace/open-source depth ✅
+- Added Ed25519 manifest signing and verification helpers.
+- Added a signing CLI at `scripts/marketplace/package_sign.py`.
+- Added a signed demo Marketplace manifest and public verification key; no private signing key is stored in the repository.
+- Marketplace now exposes a compatibility/trust matrix through `/api/marketplace/compatibility` and the frontend.
+- GitHub release workflow now packages a source archive, version/changelog files and SHA-256 checksums as release artifacts.
+- License selection remains explicit owner work; the repository does not claim a license that was not selected.
+
+### Closure validation
+- Backend Ruff and targeted OpenAPI contract checks must remain green.
+- New signing and notification unit tests are included in the full backend suite.
+- Frontend typecheck/test/lint/production build must remain green.
+- Alembic must have one head and the notification migration must apply cleanly.
+- Protected `sqlserver-lab-myridian-lab` / port 1433 remains untouched.
+
+### Post-20 state
+Blocks 1–20 are now closed for the current commercial-readiness implementation baseline. Remaining work is environment/owner-dependent release gating and future product expansion: credentialed external-provider E2E, clean-machine deployment drills, formal license selection/publication, and any next-generation features beyond this baseline.

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.dependencies import get_db_session
+from apps.api.routes.notifications import dispatch_event
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -78,6 +79,20 @@ async def ingest_alert(
         tenant.organization_id, tenant.workspace_id, **dto.model_dump()
     )
     await session.commit()
+    await dispatch_event(
+        session,
+        tenant.organization_id,
+        tenant.workspace_id,
+        "alert.created",
+        {
+            "id": str(alert.id),
+            "title": alert.title,
+            "message": alert.message,
+            "severity": alert.severity,
+            "status": alert.status,
+        },
+    )
+    await session.commit()
     return _dto(alert)
 
 
@@ -95,5 +110,19 @@ async def update_alert_status(
 
         raise HTTPException(status_code=404, detail="Alert not found")
     alert = await repo.set_status(alert, dto.status)
+    await session.commit()
+    await dispatch_event(
+        session,
+        tenant.organization_id,
+        tenant.workspace_id,
+        "alert.updated",
+        {
+            "id": str(alert.id),
+            "title": alert.title,
+            "message": alert.message,
+            "severity": alert.severity,
+            "status": alert.status,
+        },
+    )
     await session.commit()
     return _dto(alert)

@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from packages.auth import get_tenant_context, require_permissions
+from packages.billing.entitlements import enforce_feature
 from packages.domain.models.context import TenantContext
 from packages.persistence.repositories.core import CoreRepository
 from pydantic import BaseModel, Field
@@ -99,6 +100,7 @@ async def create_resource(
     tenant: Annotated[TenantContext, Depends(require_permissions("resources.manage"))],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> ResourceMutationResponseDTO:
+    await enforce_feature(session, tenant.organization_id, "resources.create")
     repository = CoreRepository(session)
     try:
         resource = await repository.create_resource(
@@ -270,9 +272,7 @@ def _create_bound_connector(resource, binding, credential):
     from packages.secrets import EnvironmentSecretProvider
 
     if binding.connector_key == "kubernetes":
-        return create_connector(
-            resource, **binding.config, kubeconfig_ref=credential.secret_ref
-        )
+        return create_connector(resource, **binding.config, kubeconfig_ref=credential.secret_ref)
     if binding.connector_key in {"aws", "azure", "gcp"}:
         return create_connector(resource, **binding.config, credential_ref=credential.secret_ref)
     secret = EnvironmentSecretProvider().resolve(credential.secret_ref)
@@ -523,6 +523,7 @@ async def import_discovered_resources(
 ) -> DiscoveryPreviewDTO:
     from packages.persistence.repositories.discovery import DiscoveryRunRepository
     from packages.persistence.repositories.resource_connections import ResourceConnectionRepository
+
     resource = await CoreRepository(session).get_resource(
         tenant.organization_id, resource_id, tenant.workspace_id
     )
@@ -539,9 +540,7 @@ async def import_discovered_resources(
     selected = {
         str(item) for item in (payload.resource_ids if payload and payload.resource_ids else [])
     }
-    snapshot = [
-        item for item in run.snapshot if not selected or str(item.get("id")) in selected
-    ]
+    snapshot = [item for item in run.snapshot if not selected or str(item.get("id")) in selected]
     if selected and len(snapshot) != len(selected):
         raise HTTPException(
             status_code=400,

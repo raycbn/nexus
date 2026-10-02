@@ -40,3 +40,16 @@ jobs:
           SECRET_KEY: release-validation-placeholder
           NEXUS_VAULT_MASTER_KEY: release-validation-placeholder
         run: docker compose build api scheduled-discovery web
+      - name: Build release artifacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          git archive --format=tar.gz --prefix=nexus-${GITHUB_REF_NAME}/ -o dist/nexus-${GITHUB_REF_NAME}.tar.gz HEAD
+          sha256sum dist/nexus-${GITHUB_REF_NAME}.tar.gz > dist/SHA256SUMS
+          cp VERSION dist/VERSION
+          cp CHANGELOG.md dist/CHANGELOG.md
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-${{ github.ref_name }}
+          path: dist/

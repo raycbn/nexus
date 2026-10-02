@@ -14,7 +14,7 @@ from packages.persistence.models.organization_access import (
     TeamModel,
 )
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.dependencies import get_db_session
@@ -286,3 +286,56 @@ async def accept_invitation(
     invitation.accepted_at = datetime.now(UTC)
     await session.commit()
     return {"status": "accepted", "user_id": str(user.id), "membership_id": str(membership.id)}
+
+
+class MemberRoleUpdate(BaseModel):
+    role: str = Field(min_length=1, max_length=64)
+    enabled: bool | None = None
+
+
+@router.patch("/memberships/{user_id}")
+async def update_membership(
+    user_id: UUID,
+    payload: MemberRoleUpdate,
+    tenant: TenantContext = Depends(require_permissions("members.manage")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if payload.role not in {"admin", "operator", "member"}:
+        raise HTTPException(400, "Unsupported role")
+    user = await session.scalar(
+        select(UserModel).where(
+            UserModel.id == user_id, UserModel.organization_id == tenant.organization_id
+        )
+    )
+    membership = await session.scalar(
+        select(MembershipModel).where(
+            MembershipModel.user_id == user_id,
+            MembershipModel.organization_id == tenant.organization_id,
+        )
+    )
+    if not user or not membership:
+        raise HTTPException(404, "Membership not found")
+    if user.role == "admin" and payload.role != "admin":
+        admins = await session.scalar(
+            select(func.count())
+            .select_from(UserModel)
+            .where(
+                UserModel.organization_id == tenant.organization_id,
+                UserModel.role == "admin",
+                UserModel.enabled.is_(True),
+            )
+        )
+        if (admins or 0) <= 1:
+            raise HTTPException(409, "Organization must keep an enabled admin")
+    user.role = payload.role
+    membership.role = payload.role
+    if payload.enabled is not None:
+        user.enabled = payload.enabled
+        membership.status = "active" if payload.enabled else "disabled"
+    await session.commit()
+    return {
+        "user_id": str(user.id),
+        "role": user.role,
+        "enabled": user.enabled,
+        "status": membership.status,
+    }

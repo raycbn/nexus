@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException
 from packages.auth import get_current_principal, require_permissions
 from packages.domain.models.identity import AuthenticatedPrincipal
+from packages.persistence.models.alert import AlertModel
 from packages.persistence.models.core import ResourceModel
 from packages.persistence.models.incident import IncidentModel
 from packages.persistence.repositories.alert import AlertRepository
@@ -19,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.dependencies import get_db_session
 
 router = APIRouter(prefix="/public/v1", tags=["public-api"])
-PUBLIC_SCOPES = frozenset({"resources.read", "incidents.read", "alerts.ingest"})
+PUBLIC_SCOPES = frozenset({"resources.read", "incidents.read", "alerts.read", "alerts.ingest"})
 
 
 class ApiKeyCreateRequest(BaseModel):
@@ -155,9 +156,7 @@ async def public_alert_ingest(
                     detail="Idempotency-Key was already used for a different request",
                 )
             return existing.response
-    alert = await AlertRepository(session).ingest(
-        organization_id, None, **dto.model_dump()
-    )
+    alert = await AlertRepository(session).ingest(organization_id, None, **dto.model_dump())
     response = {
         "id": str(alert.id),
         "source": alert.source,
@@ -213,3 +212,56 @@ async def revoke_api_key(
     if record is None:
         raise HTTPException(status_code=404, detail="API key not found")
     await ApiKeyRepository(session).revoke(record)
+
+
+@router.get("/alerts")
+async def public_alerts(
+    context: Annotated[tuple[UUID, frozenset[str]], Depends(_api_key_context)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[dict[str, object]]:
+    organization_id = _require_scope(context, "alerts.read")
+    result = await session.execute(
+        select(AlertModel)
+        .where(AlertModel.organization_id == organization_id)
+        .order_by(AlertModel.last_seen_at.desc())
+        .limit(100)
+    )
+    return [
+        {
+            "id": str(a.id),
+            "source": a.source,
+            "title": a.title,
+            "severity": a.severity,
+            "status": a.status,
+            "occurrence_count": a.occurrence_count,
+            "last_seen_at": a.last_seen_at.isoformat(),
+        }
+        for a in result.scalars().all()
+    ]
+
+
+@router.post("/keys/{key_id}/rotate", response_model=ApiKeyResponse)
+async def rotate_api_key(
+    key_id: UUID,
+    principal: Annotated[AuthenticatedPrincipal, Depends(get_current_principal)],
+    _: Annotated[object, Depends(require_permissions("api_keys.manage"))],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ApiKeyResponse:
+    records = await ApiKeyRepository(session).list_for_organization(principal.organization_id)
+    current = next((item for item in records if item.id == key_id), None)
+    if current is None:
+        raise HTTPException(404, "API key not found")
+    raw = "nx_live_" + secrets.token_urlsafe(32)
+    replacement = await ApiKeyRepository(session).create(
+        principal.organization_id,
+        principal.user_id,
+        current.name,
+        raw[:16],
+        hashlib.sha256(raw.encode()).hexdigest(),
+        list(current.scopes),
+        current.expires_at,
+    )
+    await ApiKeyRepository(session).revoke(current)
+    replacement._raw_key = raw
+    await session.commit()
+    return _serialize(replacement, include_secret=True)

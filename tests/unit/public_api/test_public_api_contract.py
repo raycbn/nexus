@@ -7,6 +7,8 @@ def test_public_api_routes_are_in_openapi() -> None:
     assert "/api/public/v1/resources" in paths
     assert "/api/public/v1/incidents" in paths
     assert "/api/public/v1/keys" in paths
+    assert "/api/public/v1/alerts" in paths
+    assert "/api/public/v1/keys/{key_id}/rotate" in paths
 
 
 def test_api_key_management_is_admin_and_operator_capability() -> None:

@@ -76,3 +76,19 @@ python scripts/release/validate.py
 The authenticated Recovery console is available at `/settings/recovery`. It exposes durable queue/DLQ state and a controlled requeue operation for authorized operators. Backup and restore procedures remain in `docs/DISASTER_RECOVERY.md`.
 
 The current release baseline is `0.3.0`. For external exposure, set `NEXUS_SSO_PUBLIC_BASE_URL` and place TLS at the reverse-proxy boundary; the API emits HSTS when traffic is forwarded as HTTPS.
+
+
+## Self-Hosted edition controls
+
+`GET /api/self-hosted/status` exposes the current NEXUS version, configured release channel, latest configured version, upgrade availability, local AI configuration and licensing mode.
+
+The default local AI path uses the bundled Ollama runtime. The endpoint reports it as offline-capable because inference can stay on the local deployment when a local model is configured; no external provider is required for that execution path.
+
+Update metadata is operator-configured through:
+- `NEXUS_UPDATE_CHANNEL` (default `stable`)
+- `NEXUS_UPDATE_MANIFEST_URL` (optional)
+- `NEXUS_UPDATE_LATEST_VERSION` (default `0.3.0`)
+
+An available update is informational. NEXUS does not auto-replace the running deployment; an operator explicitly applies the reviewed release with the documented Compose workflow.
+
+Licensing is intentionally not hard-coded by the application. `NEXUS_LICENSE_MODE=owner-configured` documents that the project owner must select and publish the applicable license or commercial terms.

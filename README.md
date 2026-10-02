@@ -121,6 +121,8 @@ The 0.3.0 baseline keeps backend and frontend capabilities synchronized. The rel
 - `/settings/ai` — providers, models and per-task routing.
 - `/settings/governance` — autonomous policy, approval chains, resource/risk limits and maintenance windows.
 - `/settings/recovery` — durable queue and DLQ visibility/requeue for authorized operators.
+- `/settings/self-hosted` — version/channel, local AI and operator-controlled upgrade status.
+- `/settings/notifications` — outbound provider endpoints, test delivery and failure lifecycle.
 - `/metering` — usage, plan quota and billing-ready events.
 - `/developer-api` — tenant-scoped API keys, including optional alert-ingestion scope.
 - `/marketplace` — API/SDK catalog with compatibility and integrity metadata.

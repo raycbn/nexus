@@ -101,6 +101,10 @@ class ApiClient {
   async getRecoveryStatus() { return this.request<RecoveryStatusDTO>('/recovery/status'); }
   async requeueRecoveryDlq() { return this.request<{ moved: number }>('/recovery/dlq/requeue', { method: 'POST' }); }
   async getSystemVersion() { return this.request<{ version: string; environment: string }>('/system/version'); }
+  async getSelfHostedStatus() { return this.request<{ version: string; channel: string; latest_version: string; upgrade_available: boolean; license_mode: string; local_ai: { provider: string; configured: boolean; model: string | null; offline_capable: boolean }; manifest_url: string | null }>('/self-hosted/status'); }
+  async getNotificationEndpoints() { return this.request<{ id: string; name: string; provider: string; credential_id: string; event_types: string[]; enabled: boolean; failure_count: number; last_delivery_at: string | null }[]>('/notifications'); }
+  async createNotificationEndpoint(data: { name: string; provider: string; credential_id: string }) { return this.request('/notifications', { method: 'POST', body: JSON.stringify(data) }); }
+  async testNotificationEndpoint(id: string) { return this.request(`/notifications/${encodeURIComponent(id)}/test`, { method: 'POST' }); }
   async updateAutonomousGovernance(data: AutonomousGovernanceDTO) { return this.request<AutonomousGovernanceDTO>('/governance/autonomous', { method: 'PUT', body: JSON.stringify(data) }); }
 
   async getInvestigations() { return this.request<any[]>('/investigations'); }
@@ -205,7 +209,10 @@ class ApiClient {
   async getPublicApiKeys() { return this.request<{ id: string; name: string; key_prefix: string; scopes: string[]; enabled: boolean; expires_at: string | null; last_used_at: string | null; created_at: string }[]>("/public/v1/keys"); }
   async createPublicApiKey(data: { name: string; scopes: string[]; expires_at?: string }) { return this.request<{ id: string; name: string; key_prefix: string; scopes: string[]; api_key: string }>("/public/v1/keys", { method: "POST", body: JSON.stringify(data) }); }
   async revokePublicApiKey(id: string) { return this.request<void>(`/public/v1/keys/${encodeURIComponent(id)}`, { method: "DELETE" }); }
+  async rotatePublicApiKey(id: string) { return this.request<{ id: string; name: string; key_prefix: string; scopes: string[]; api_key: string }>(`/public/v1/keys/${encodeURIComponent(id)}/rotate`, { method: "POST" }); }
+  async getPublicAlerts() { return this.request<any[]>("/public/v1/alerts"); }
   async getMarketplaceCatalog() { return this.request<{ slug: string; name: string; version: string; category: string; description: string; publisher: string; status: string; package_type: string; compatibility: string; integrity: string; docs_url: string }[]>("/marketplace/catalog"); }
+  async getMarketplaceCompatibility() { return this.request<{ package_type: string; format_version: string; nexus_versions: string[]; runtimes: string[]; trust: string }[]>("/marketplace/compatibility"); }
   async getSSOProviders() { return this.request('/sso/providers'); }
   async createSSOProvider(data: Record<string, unknown>) { return this.request('/sso/providers', { method: 'POST', body: JSON.stringify(data) }); }
   async updateSSOProvider(id: string, data: Record<string, unknown>) { return this.request(`/sso/providers/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }

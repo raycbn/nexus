@@ -1,0 +1,14 @@
+{
+  "description": "Minimal Marketplace manifest used by the signing example.",
+  "entrypoint": "nexus_demo_connector:create_connector",
+  "format_version": "1",
+  "name": "nexus-demo-connector",
+  "nexus_versions": [
+    "0.3.x"
+  ],
+  "package_type": "connector",
+  "publisher": "NEXUS",
+  "runtime": "python3.12+",
+  "signature": "TRciuhcjiBc-7beJOJ_0q6DqGiAQ-HXPbS-3TLiUFB5i2t_YbhWnvHtWF4oeWVeZxOVZR8uMgiFY59ToKZZxDA==",
+  "version": "1.0.0"
+}

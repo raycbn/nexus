@@ -2,8 +2,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from packages.auth import require_permissions
+from packages.billing.entitlements import current_plan, enforce_feature
 from packages.domain.models.context import TenantContext
 from packages.persistence.repositories.usage import UsageRepository
 from pydantic import BaseModel, Field
@@ -43,6 +44,17 @@ async def record_usage(
     tenant: Annotated[TenantContext, Depends(require_permissions("metering.manage"))],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> UsageEventDTO:
+    await enforce_feature(session, tenant.organization_id, "metering.record")
+    plan = await current_plan(session, tenant.organization_id)
+    if plan is not None and plan.included_units > 0 and dto.metric == "usage_units":
+        now = datetime.now(UTC)
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        rows = await UsageRepository(session).summary(
+            tenant.organization_id, tenant.workspace_id, start, now
+        )
+        used = next((quantity for metric, quantity in rows if metric == "usage_units"), 0.0)
+        if used + dto.quantity > plan.included_units:
+            raise HTTPException(402, "Monthly usage quota exceeded")
     event = await UsageRepository(session).record(
         tenant.organization_id,
         tenant.workspace_id,
@@ -97,6 +109,7 @@ async def usage_quota(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> UsageQuotaDTO:
     from packages.persistence.models.billing import BillingPlanModel, BillingSubscriptionModel
+
     subscription = (
         await session.execute(
             select(BillingSubscriptionModel).where(
