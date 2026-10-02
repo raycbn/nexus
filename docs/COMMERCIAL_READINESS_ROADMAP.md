@@ -755,3 +755,18 @@ Roadmap remaining after Blocks 11–15: the next work is post-v1 operational/pro
 
 ### Post-20 state
 Blocks 1–20 are now closed for the current commercial-readiness implementation baseline. Remaining work is environment/owner-dependent release gating and future product expansion: credentialed external-provider E2E, clean-machine deployment drills, formal license selection/publication, and any next-generation features beyond this baseline.
+
+
+### Final closure verification — 2026-10-02
+- Frontend ESLint passes with `--max-warnings 0`.
+- Frontend TypeScript typecheck passes.
+- Frontend Vitest suite passes: 18 tests.
+- Frontend production build passes: 1,542 modules transformed, exit code 0; Vite reports only the existing large-chunk advisory.
+- Backend unit suite passes: 666 passed, 1 skipped, 2 deselected.
+- Full backend suite reached 100% with one integration failure caused by a transient PostgreSQL connection loss (`WinError 64`); the affected authentication test was then rerun independently and passed.
+- Alembic lineage was corrected with a no-op merge migration and now has exactly one head: `fff001122334`.
+- The notification migration remains part of the merged Alembic lineage.
+- `git diff --check` is clean.
+- The new merge migration passes Ruff.
+- Live Docker redeployment was intentionally not forced because the local Docker command runner was blocking; no protected container was touched.
+- Credentialed third-party notification E2E and formal license selection remain external/provider-owner release gates, not code defects.
